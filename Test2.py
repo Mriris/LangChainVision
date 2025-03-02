@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from langchain_ollama import OllamaLLM
-import io  # 新增：用于将 PIL Image 转换为 bytes
+import io
 
 # 定义状态对象，用于在节点间传递数据
 class ImageState(Dict[str, Any]):
@@ -18,6 +18,45 @@ class ImageState(Dict[str, Any]):
     task: str
     model: Any
     output: Any
+    user_requirement: str
+    analysis_result: str
+
+# 需求分析节点
+def analysis_node(state: ImageState) -> ImageState:
+    analysis_model = OllamaLLM(model="phi4-mini:latest", base_url="http://localhost:11434")
+    user_requirement = state["user_requirement"]
+
+    # 优化后的提示
+    prompt = (
+        "You are an assistant that determines the appropriate image analysis task based on user requirements. "
+        "The tasks are: "
+        "- Classification: Identify the main object or category in the image (e.g., 'What is this animal?'). "
+        "- Annotation: Detect and locate multiple objects in the image (e.g., 'Find all objects and their positions'). "
+        "- Interpretation: Provide a detailed description of the image (e.g., 'Describe what is happening in the image'). "
+        "Examples: "
+        "- 'Identify the main object' -> Classification "
+        "- '请描述图像' -> Interpretation "
+        "- 'Detect all objects' -> Annotation "
+        "Analyze the following requirement and respond with only the task name: {user_requirement}"
+    ).format(user_requirement=user_requirement)
+
+    # 调用模型并打印分析结果以调试
+    analysis_result = analysis_model.invoke(prompt)
+    state["analysis_result"] = analysis_result.strip().lower()
+    print(f"分析结果: {state['analysis_result']}")  # 调试用
+
+    # 严格匹配任务名称
+    if state["analysis_result"] == "classification":
+        state["task"] = "classification"
+    elif state["analysis_result"] == "annotation":
+        state["task"] = "annotation"
+    elif state["analysis_result"] == "interpretation":
+        state["task"] = "interpretation"
+    else:
+        state["task"] = "interpretation"  # 默认任务
+        print("警告：分析结果未明确指定任务，默认设置为 interpretation")
+
+    return state
 
 # 图像输入节点
 def image_input_node(state: ImageState) -> ImageState:
@@ -34,9 +73,9 @@ def preprocess_node(state: ImageState) -> ImageState:
     if task == "classification":
         image = cv2.resize(image, (224, 224))
         image = image / 255.0
-        image = np.transpose(image, (2, 0, 1))  # HWC -> CHW
+        image = np.transpose(image, (2, 0, 1))
     elif task == "annotation":
-        pass  # YOLO 使用原始尺寸
+        pass
     elif task == "interpretation":
         image = cv2.resize(image, (384, 384))
         image = image / 255.0
@@ -51,15 +90,13 @@ def model_selection_node(state: ImageState) -> ImageState:
         from torchvision.models.resnet import ResNet50_Weights
         model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
         model.eval()
-        state["model"] = model
     elif task == "annotation":
         model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
-        state["model"] = model
     elif task == "interpretation":
         model = OllamaLLM(model="llava:13b", base_url="http://localhost:11434")
-        state["model"] = model
     else:
         raise ValueError("不支持的任务类型")
+    state["model"] = model
     return state
 
 # 模型推理节点
@@ -125,8 +162,7 @@ def output_node(state: ImageState) -> ImageState:
 
 # 创建工作流程
 workflow = StateGraph(ImageState)
-
-# 添加节点
+workflow.add_node("analysis", analysis_node)
 workflow.add_node("image_input", image_input_node)
 workflow.add_node("preprocess", preprocess_node)
 workflow.add_node("model_selection", model_selection_node)
@@ -134,6 +170,7 @@ workflow.add_node("inference", inference_node)
 workflow.add_node("display_output", output_node)
 
 # 定义边
+workflow.add_edge("analysis", "image_input")
 workflow.add_edge("image_input", "preprocess")
 workflow.add_edge("preprocess", "model_selection")
 workflow.add_edge("model_selection", "inference")
@@ -141,11 +178,12 @@ workflow.add_edge("inference", "display_output")
 workflow.add_edge("display_output", END)
 
 # 设置入口点
-workflow.set_entry_point("image_input")
+workflow.set_entry_point("analysis")
 
 # 编译工作流程
 app = workflow.compile()
 
-# 运行工作流程
-initial_state = {"task": "interpretation"}
+# 在运行工作流前捕获用户需求
+user_requirement = input("请输入您的需求：")
+initial_state = {"task": None, "user_requirement": user_requirement}
 app.invoke(initial_state)
