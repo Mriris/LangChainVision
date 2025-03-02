@@ -6,10 +6,12 @@ import torchvision.models as models
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 import matplotlib
+
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from langchain_ollama import OllamaLLM
 import io
+
 
 # 定义状态对象，用于在节点间传递数据
 class ImageState(Dict[str, Any]):
@@ -20,6 +22,7 @@ class ImageState(Dict[str, Any]):
     output: Any
     user_requirement: str
     analysis_result: str
+
 
 # 需求分析节点
 def analysis_node(state: ImageState) -> ImageState:
@@ -35,7 +38,7 @@ def analysis_node(state: ImageState) -> ImageState:
         "- Interpretation: Provide a detailed description of the image (e.g., 'Describe what is happening in the image'). "
         "Examples: "
         "- 'Identify the main object' -> Classification "
-        "- '请描述图像' -> Interpretation "
+        "- 'Describe the image' -> Interpretation "
         "- 'Detect all objects' -> Annotation "
         "Analyze the following requirement and respond with only the task name: {user_requirement}"
     ).format(user_requirement=user_requirement)
@@ -58,13 +61,15 @@ def analysis_node(state: ImageState) -> ImageState:
 
     return state
 
+
 # 图像输入节点
 def image_input_node(state: ImageState) -> ImageState:
-    image_path = r"C:\0Program\Python\LangChainVision\example\0001.jpg"
+    image_path = r"C:\0Program\Python\LangChainVision\example\2011_000006.jpg"
     if not image_path.endswith(('.jpg', '.png', '.jpeg')):
         raise ValueError("请提供有效的图像文件（.jpg, .png, .jpeg）")
     state["image_path"] = image_path
     return state
+
 
 # 图像预处理节点
 def preprocess_node(state: ImageState) -> ImageState:
@@ -83,6 +88,7 @@ def preprocess_node(state: ImageState) -> ImageState:
     state["image"] = image
     return state
 
+
 # 模型选择节点
 def model_selection_node(state: ImageState) -> ImageState:
     task = state["task"]
@@ -98,6 +104,7 @@ def model_selection_node(state: ImageState) -> ImageState:
         raise ValueError("不支持的任务类型")
     state["model"] = model
     return state
+
 
 # 模型推理节点
 def inference_node(state: ImageState) -> ImageState:
@@ -127,10 +134,11 @@ def inference_node(state: ImageState) -> ImageState:
         image_bytes = image_bytes.getvalue()
 
         # 调用模型，使用 invoke 方法和 bytes 格式的图像
-        prompt = "Describe this image."
+        prompt = "Describe this image in Chinese."
         response = model.invoke(prompt, images=[image_bytes])
         state["output"] = response.strip()
     return state
+
 
 # 结果输出节点
 def output_node(state: ImageState) -> ImageState:
@@ -159,6 +167,7 @@ def output_node(state: ImageState) -> ImageState:
     elif task == "interpretation":
         print(f"图像描述：{output}")
     return state
+
 
 # 创建工作流程
 workflow = StateGraph(ImageState)
