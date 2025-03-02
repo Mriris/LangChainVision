@@ -3,7 +3,8 @@ import numpy as np
 import torch
 from PIL import Image
 import torchvision.models as models
-from typing import Dict, Any
+from typing import Dict, Any, TypedDict, List, Annotated, Literal
+from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, END
 import matplotlib
 
@@ -11,188 +12,497 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from langchain_ollama import OllamaLLM
 import io
+import os
+import json
+import re
 
 
-# 定义状态对象，用于在节点间传递数据
-class ImageState(Dict[str, Any]):
+# 使用TypedDict定义状态类型，更符合LangGraph推荐用法
+class ImageState(TypedDict):
     image_path: str
-    image: np.ndarray
-    task: str
+    image: Any  # numpy数组不能直接在TypedDict中表示
+    task: Literal["classification", "annotation", "interpretation", ""]
     model: Any
     output: Any
     user_requirement: str
     analysis_result: str
+    error: str
+    status: str
+    history: List[Dict[str, Any]]
+
+
+# 结果模型结构（不使用Pydantic，避免额外依赖）
+class AnalysisResult:
+    def __init__(self, task, confidence, reasoning):
+        self.task = task
+        self.confidence = confidence
+        self.reasoning = reasoning
+
+    def model_dump(self):
+        return {
+            "task": self.task,
+            "confidence": self.confidence,
+            "reasoning": self.reasoning
+        }
+
+
+# 定义条件函数，用于路由决策
+def should_retry(state: ImageState) -> Literal["retry", "continue"]:
+    """决定是否需要重试分析"""
+    if state.get("error") and "analysis" in state.get("error", ""):
+        return "retry"
+    return "continue"
+
+
+def route_by_task(state: ImageState) -> str:
+    """根据任务类型路由到不同处理流程"""
+    if state.get("error"):
+        return "error_handler"
+    return state.get("task", "interpretation")  # 默认为interpretation
 
 
 # 需求分析节点
 def analysis_node(state: ImageState) -> ImageState:
-    analysis_model = OllamaLLM(model="phi4-mini:latest", base_url="http://localhost:11434")
-    user_requirement = state["user_requirement"]
+    # 为状态添加历史记录
+    if "history" not in state:
+        state["history"] = []
 
-    # 优化后的提示
-    prompt = (
-        "You are an assistant that determines the appropriate image analysis task based on user requirements. "
-        "The tasks are: "
-        "- Classification: Identify the main object or category in the image (e.g., 'What is this animal?'). "
-        "- Annotation: Detect and locate multiple objects in the image (e.g., 'Find all objects and their positions'). "
-        "- Interpretation: Provide a detailed description of the image (e.g., 'Describe what is happening in the image'). "
-        "Examples: "
-        "- 'Identify the main object' -> Classification "
-        "- 'Describe the image' -> Interpretation "
-        "- 'Detect all objects' -> Annotation "
-        "Analyze the following requirement and respond with only the task name: {user_requirement}"
-    ).format(user_requirement=user_requirement)
+    try:
+        analysis_model = OllamaLLM(
+            model="phi4-mini:latest",
+            base_url="http://localhost:11434",
+            temperature=0.1  # 降低温度以获得更确定性的结果
+        )
+        user_requirement = state["user_requirement"]
 
-    # 调用模型并打印分析结果以调试
-    analysis_result = analysis_model.invoke(prompt)
-    state["analysis_result"] = analysis_result.strip().lower()
-    print(f"分析结果: {state['analysis_result']}")  # 调试用
+        # 更结构化的提示词，引导模型返回JSON格式
+        prompt = """
+        你是一个专业的计算机视觉任务分析专家。请分析用户的需求并确定最合适的图像分析任务。
 
-    # 严格匹配任务名称
-    if state["analysis_result"] == "classification":
-        state["task"] = "classification"
-    elif state["analysis_result"] == "annotation":
-        state["task"] = "annotation"
-    elif state["analysis_result"] == "interpretation":
-        state["task"] = "interpretation"
-    else:
+        可选任务:
+        1. classification: 识别图像中的主要对象或类别（例如："这是什么动物？"）
+        2. annotation: 检测并定位图像中的多个对象（例如："找出所有物体及其位置"）
+        3. interpretation: 提供图像的详细描述（例如："描述图像中发生的事情"）
+
+        请分析以下用户需求: "{user_requirement}"
+
+        以JSON格式返回你的分析结果：
+        ```json
+        {{
+            "task": "任务名称(classification/annotation/interpretation)",
+            "confidence": 0.xx,
+            "reasoning": "你的分析理由"
+        }}
+        ```
+        只返回有效的JSON，不要包含其他文本。
+        """.format(user_requirement=user_requirement)
+
+        # 调用模型并解析结果
+        analysis_response = analysis_model.invoke(prompt)
+
+        # 提取JSON部分
+        json_match = re.search(r'```json\s*(.*?)\s*```', analysis_response, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            json_str = analysis_response.strip()
+
+        # 清理可能的额外字符
+        json_str = re.sub(r'[^\x00-\x7F]+', '', json_str)
+
+        try:
+            result = json.loads(json_str)
+            # 创建结果对象
+            parsed_result = AnalysisResult(
+                task=result.get("task", "interpretation"),
+                confidence=result.get("confidence", 0.5),
+                reasoning=result.get("reasoning", "")
+            )
+
+            state["analysis_result"] = parsed_result.model_dump()
+            state["task"] = parsed_result.task.lower()
+            print(f"分析结果: {state['task']} (置信度: {parsed_result.confidence})")
+
+            # 记录到历史
+            state["history"].append({
+                "step": "analysis",
+                "result": parsed_result.model_dump()
+            })
+
+        except json.JSONDecodeError as e:
+            print(f"JSON解析错误: {e}")
+            print(f"原始响应: {analysis_response}")
+            state["task"] = "interpretation"  # 默认任务
+            state["error"] = f"analysis_json_error: {str(e)}"
+
+    except Exception as e:
+        state["error"] = f"analysis_error: {str(e)}"
         state["task"] = "interpretation"  # 默认任务
-        print("警告：分析结果未明确指定任务，默认设置为 interpretation")
+
+    return state
+
+
+# 错误处理节点
+def error_handler_node(state: ImageState) -> ImageState:
+    error = state.get("error", "未知错误")
+    print(f"处理错误: {error}")
+
+    # 清除错误并设置默认值
+    state["error"] = ""
+    if "task" not in state or not state["task"]:
+        state["task"] = "interpretation"
+
+    state["status"] = "已从错误恢复，使用默认任务"
+
+    # 记录到历史
+    if "history" in state:
+        state["history"].append({
+            "step": "error_handler",
+            "error": error,
+            "recovery": "使用默认任务"
+        })
 
     return state
 
 
 # 图像输入节点
 def image_input_node(state: ImageState) -> ImageState:
-    image_path = r"C:\0Program\Python\LangChainVision\example\2011_000006.jpg"
-    if not image_path.endswith(('.jpg', '.png', '.jpeg')):
-        raise ValueError("请提供有效的图像文件（.jpg, .png, .jpeg）")
-    state["image_path"] = image_path
+    try:
+        # 支持自定义图像路径或使用默认路径
+        image_path = state.get("image_path", "")
+        if not image_path:
+            image_path = r"C:\0Program\Python\LangChainVision\example\2011_000006.jpg"
+
+        # 验证图像文件
+        if not os.path.exists(image_path):
+            raise ValueError(f"图像文件不存在: {image_path}")
+
+        if not image_path.endswith(('.jpg', '.png', '.jpeg')):
+            raise ValueError("请提供有效的图像文件（.jpg, .png, .jpeg）")
+
+        state["image_path"] = image_path
+
+        # 记录到历史
+        if "history" in state:
+            state["history"].append({
+                "step": "image_input",
+                "path": image_path
+            })
+
+    except Exception as e:
+        state["error"] = f"image_input_error: {str(e)}"
+
     return state
 
 
 # 图像预处理节点
 def preprocess_node(state: ImageState) -> ImageState:
-    image = cv2.imread(state["image_path"])
-    task = state["task"]
-    if task == "classification":
-        image = cv2.resize(image, (224, 224))
-        image = image / 255.0
-        image = np.transpose(image, (2, 0, 1))
-    elif task == "annotation":
-        pass
-    elif task == "interpretation":
-        image = cv2.resize(image, (384, 384))
-        image = image / 255.0
-        image = np.transpose(image, (2, 0, 1))
-    state["image"] = image
+    try:
+        image_path = state["image_path"]
+        task = state["task"]
+
+        # 读取图像
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"无法读取图像: {image_path}")
+
+        # 根据任务进行预处理
+        if task == "classification":
+            image = cv2.resize(image, (224, 224))
+            image = image / 255.0
+            image = np.transpose(image, (2, 0, 1))  # CHW格式
+        elif task == "annotation":
+            # 保持原始图像用于YOLOv5
+            pass
+        elif task == "interpretation":
+            image = cv2.resize(image, (384, 384))
+            image = image / 255.0
+            image = np.transpose(image, (2, 0, 1))  # CHW格式
+
+        state["image"] = image
+
+        # 记录到历史
+        if "history" in state:
+            state["history"].append({
+                "step": "preprocess",
+                "task": task,
+                "image_shape": str(image.shape)
+            })
+
+    except Exception as e:
+        state["error"] = f"preprocess_error: {str(e)}"
+
     return state
 
 
 # 模型选择节点
 def model_selection_node(state: ImageState) -> ImageState:
-    task = state["task"]
-    if task == "classification":
-        from torchvision.models.resnet import ResNet50_Weights
-        model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        model.eval()
-    elif task == "annotation":
-        model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
-    elif task == "interpretation":
-        model = OllamaLLM(model="llava:13b", base_url="http://localhost:11434")
-    else:
-        raise ValueError("不支持的任务类型")
-    state["model"] = model
+    try:
+        task = state["task"]
+
+        if task == "classification":
+            from torchvision.models.resnet import ResNet50_Weights
+            model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+            model.eval()
+            model_name = "ResNet50"
+        elif task == "annotation":
+            model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+            model_name = "YOLOv5s"
+        elif task == "interpretation":
+            model = OllamaLLM(
+                model="llava:13b",
+                base_url="http://localhost:11434",
+                temperature=0.7  # 适当的温度，让描述更丰富
+            )
+            model_name = "LLaVA-13B"
+        else:
+            raise ValueError(f"不支持的任务类型: {task}")
+
+        state["model"] = model
+
+        # 记录到历史
+        if "history" in state:
+            state["history"].append({
+                "step": "model_selection",
+                "task": task,
+                "model": model_name
+            })
+
+    except Exception as e:
+        state["error"] = f"model_selection_error: {str(e)}"
+
     return state
 
 
 # 模型推理节点
 def inference_node(state: ImageState) -> ImageState:
-    task = state["task"]
-    model = state["model"]
-    image = state["image"]
-    if task == "classification":
-        image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
-        with torch.no_grad():
-            output = model(image_tensor)
-        state["output"] = output.argmax(dim=1).item()
-    elif task == "annotation":
-        results = model(image)
-        state["output"] = results.xyxy[0].cpu().numpy()
-    elif task == "interpretation":
-        # 将图像从 (C, H, W) 转换为 (H, W, C)
-        image_hwc = image.transpose(1, 2, 0)
-        # 缩放回 [0, 255] 并转换为 uint8
-        image_scaled = (image_hwc * 255).astype(np.uint8)
-        # 执行颜色转换
-        image_rgb = cv2.cvtColor(image_scaled, cv2.COLOR_BGR2RGB)
-        image_pil = Image.fromarray(image_rgb)
+    try:
+        task = state["task"]
+        model = state["model"]
+        image = state["image"]
 
-        # 将 PIL Image 转换为 bytes
-        image_bytes = io.BytesIO()
-        image_pil.save(image_bytes, format='PNG')
-        image_bytes = image_bytes.getvalue()
+        if task == "classification":
+            image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
+            with torch.no_grad():
+                output = model(image_tensor)
+            state["output"] = output.argmax(dim=1).item()
 
-        # 调用模型，使用 invoke 方法和 bytes 格式的图像
-        prompt = "Describe this image in Chinese."
-        response = model.invoke(prompt, images=[image_bytes])
-        state["output"] = response.strip()
+        elif task == "annotation":
+            original_image = cv2.imread(state["image_path"])
+            results = model(original_image)  # YOLOv5需要原始图像
+            state["output"] = results.xyxy[0].cpu().numpy()
+            state["original_image"] = original_image
+
+        elif task == "interpretation":
+            # 将图像从 (C, H, W) 转换为 (H, W, C)
+            image_hwc = image.transpose(1, 2, 0)
+            # 缩放回 [0, 255] 并转换为 uint8
+            image_scaled = (image_hwc * 255).astype(np.uint8)
+            # 执行颜色转换
+            image_rgb = cv2.cvtColor(image_scaled, cv2.COLOR_BGR2RGB)
+            image_pil = Image.fromarray(image_rgb)
+
+            # 将 PIL Image 转换为 bytes
+            image_bytes = io.BytesIO()
+            image_pil.save(image_bytes, format='PNG')
+            image_bytes = image_bytes.getvalue()
+
+            # 调用模型
+            prompt = """
+            请详细描述这张图片，包括:
+            1. 图片中的主要对象和场景
+            2. 物体的位置关系
+            3. 颜色、形状和纹理特征
+            4. 可能的场景背景和故事
+
+            请用中文回答，尽量详细但不要臆测不存在的内容。
+            """
+            response = model.invoke(prompt, images=[image_bytes])
+            state["output"] = response.strip()
+
+        # 记录到历史
+        if "history" in state:
+            state["history"].append({
+                "step": "inference",
+                "task": task,
+                "output_type": str(type(state["output"]))
+            })
+
+    except Exception as e:
+        state["error"] = f"inference_error: {str(e)}"
+
     return state
 
 
 # 结果输出节点
 def output_node(state: ImageState) -> ImageState:
-    task = state["task"]
-    output = state["output"]
-    if task == "classification":
-        with open("imagenet_classes.txt", "r") as f:
-            classes = [line.strip() for line in f.readlines()]
-        print(f"分类结果：{classes[output]}")
-    elif task == "annotation":
-        image = state["image"].copy()
-        boxes = state["output"]
-        model = state["model"]
-        class_names = model.names
-        for box in boxes:
-            x_min, y_min, x_max, y_max, conf, class_id = box
-            class_id = int(class_id)
-            label = f"{class_names[class_id]}: {conf:.2f}"
-            cv2.rectangle(image, (int(x_min), int(y_min)), (int(x_max), int(y_max)), (0, 255, 0), 2)
-            cv2.putText(image, label, (int(x_min), int(y_min) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        plt.imshow(image_rgb)
-        plt.axis('off')
-        plt.savefig("annotated_image.jpg")
-        print(f"标注结果：{output}")
-    elif task == "interpretation":
-        print(f"图像描述：{output}")
+    try:
+        task = state["task"]
+        output = state["output"]
+
+        if task == "classification":
+            try:
+                with open("imagenet_classes.txt", "r") as f:
+                    classes = [line.strip() for line in f.readlines()]
+                class_name = classes[output]
+            except Exception as e:
+                class_name = f"类别ID: {output}"
+                print(f"警告: 无法加载类别名称 - {str(e)}")
+
+            result = f"分类结果：{class_name}"
+            print(result)
+            state["result_message"] = result
+
+        elif task == "annotation":
+            original_image = state.get("original_image")
+            if original_image is None:
+                original_image = cv2.imread(state["image_path"])
+
+            boxes = state["output"]
+            model = state["model"]
+            class_names = model.names
+
+            # 创建注释副本
+            annotated_image = original_image.copy()
+
+            detection_results = []
+            for box in boxes:
+                x_min, y_min, x_max, y_max, conf, class_id = box
+                class_id = int(class_id)
+                label = f"{class_names[class_id]}: {conf:.2f}"
+                detection_results.append({
+                    "class": class_names[class_id],
+                    "confidence": float(conf),
+                    "box": [float(x_min), float(y_min), float(x_max), float(y_max)]
+                })
+
+                # 在图像上绘制边界框
+                cv2.rectangle(
+                    annotated_image,
+                    (int(x_min), int(y_min)),
+                    (int(x_max), int(y_max)),
+                    (0, 255, 0),
+                    2
+                )
+                cv2.putText(
+                    annotated_image,
+                    label,
+                    (int(x_min), int(y_min) - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    2
+                )
+
+            # 保存注释图像
+            output_path = "annotated_image.jpg"
+            image_rgb = cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB)
+            plt.figure(figsize=(10, 8))
+            plt.imshow(image_rgb)
+            plt.axis('off')
+            plt.savefig(output_path)
+            plt.close()
+
+            state["detection_results"] = detection_results
+            state["annotated_image_path"] = output_path
+            result = f"标注结果已保存至 {output_path}, 检测到 {len(detection_results)} 个对象"
+            print(result)
+            state["result_message"] = result
+
+        elif task == "interpretation":
+            result = f"图像描述：\n{output}"
+            print(result)
+            state["result_message"] = result
+
+        # 设置完成状态
+        state["status"] = "completed"
+
+        # 记录到历史
+        if "history" in state:
+            state["history"].append({
+                "step": "output",
+                "task": task,
+                "result": state.get("result_message", "")
+            })
+
+    except Exception as e:
+        state["error"] = f"output_error: {str(e)}"
+
     return state
 
 
 # 创建工作流程
 workflow = StateGraph(ImageState)
+
+# 添加节点
 workflow.add_node("analysis", analysis_node)
 workflow.add_node("image_input", image_input_node)
 workflow.add_node("preprocess", preprocess_node)
 workflow.add_node("model_selection", model_selection_node)
 workflow.add_node("inference", inference_node)
 workflow.add_node("display_output", output_node)
+workflow.add_node("error_handler", error_handler_node)
 
-# 定义边
-workflow.add_edge("analysis", "image_input")
+# 添加条件路由
+# 从分析到后续步骤的条件路由
+workflow.add_conditional_edges(
+    "analysis",
+    should_retry,
+    {
+        "retry": "analysis",  # 如果分析失败，重试
+        "continue": "image_input"  # 否则继续
+    }
+)
+
+# 定义标准边
 workflow.add_edge("image_input", "preprocess")
 workflow.add_edge("preprocess", "model_selection")
 workflow.add_edge("model_selection", "inference")
 workflow.add_edge("inference", "display_output")
 workflow.add_edge("display_output", END)
+workflow.add_edge("error_handler", "image_input")  # 错误处理后重新开始
 
 # 设置入口点
 workflow.set_entry_point("analysis")
 
-# 编译工作流程
+# 编译工作流程（移除了不兼容的checkpointer）
 app = workflow.compile()
 
-# 在运行工作流前捕获用户需求
-user_requirement = input("请输入您的需求：")
-initial_state = {"task": None, "user_requirement": user_requirement}
-app.invoke(initial_state)
+
+# 主函数
+def main():
+    # 在运行工作流前捕获用户需求
+    user_requirement = input("请输入您的图像分析需求：")
+
+    # 初始化状态
+    initial_state = {
+        "user_requirement": user_requirement,
+        "task": "",
+        "error": "",
+        "status": "started",
+        "history": []
+    }
+
+    # 运行工作流
+    final_state = app.invoke(initial_state)
+
+    # 输出结果摘要
+    print("\n" + "=" * 50)
+    print("工作流程执行完成")
+    print(f"执行任务: {final_state.get('task', '未知')}")
+    print(f"状态: {final_state.get('status', '未知')}")
+
+    if final_state.get("result_message"):
+        print("\n结果:")
+        print(final_state.get("result_message"))
+
+    if final_state.get("error"):
+        print(f"\n遇到错误: {final_state.get('error')}")
+
+    print("=" * 50)
+
+    return final_state
+
+
+if __name__ == "__main__":
+    main()
