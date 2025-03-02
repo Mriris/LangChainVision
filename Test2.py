@@ -17,10 +17,10 @@ import json
 import re
 
 
-# 使用TypedDict定义状态类型，更符合LangGraph推荐用法
+# 使用TypedDict定义状态类型
 class ImageState(TypedDict):
     image_path: str
-    image: Any  # numpy数组不能直接在TypedDict中表示
+    image: Any
     task: Literal["classification", "annotation", "interpretation", ""]
     model: Any
     output: Any
@@ -31,7 +31,7 @@ class ImageState(TypedDict):
     history: List[Dict[str, Any]]
 
 
-# 结果模型结构（不使用Pydantic，避免额外依赖）
+# 结果模型结构
 class AnalysisResult:
     def __init__(self, task, confidence, reasoning):
         self.task = task
@@ -465,7 +465,7 @@ workflow.add_edge("error_handler", "image_input")  # 错误处理后重新开始
 # 设置入口点
 workflow.set_entry_point("analysis")
 
-# 编译工作流程（移除了不兼容的checkpointer）
+# 编译工作流程
 app = workflow.compile()
 
 
