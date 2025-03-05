@@ -15,6 +15,9 @@ import io
 import os
 import json
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 # 使用TypedDict定义状态类型
