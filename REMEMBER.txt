@@ -1,0 +1,7 @@
+LangChain：https://github.com/langchain-ai
+LangSmith：https://smith.langchain.com/
+langchain-mcp：https://github.com/rectalogic/langchain-mcp
+MCP：https://github.com/modelcontextprotocol
+ollama-mcp-bridge：https://github.com/patruff/ollama-mcp-bridge
+anthropic：https://console.anthropic.com/settings/keys
+markitdown：https://github.com/microsoft/markitdown
