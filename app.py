@@ -102,7 +102,7 @@ def upload_file():
             # 严重问题：我们发现result_message总是为None
             # 创建一个直接修复，无论如何确保有消息
             if not result['message'] and result['task'] == 'annotation':
-                result['message'] = f"物体标注完成，检测到多个对象"
+                result['message'] = f"物体标注完成"
                 print(f"强制设置标注消息: {result['message']}")
             
             print(f"任务类型: {result['task']}, 结果消息: {result['message']}")
