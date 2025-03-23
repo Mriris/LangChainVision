@@ -91,31 +91,68 @@ def analysis_node(state: ImageState) -> ImageState:
 
         请分析以下用户需求: "{user_requirement}"
 
-        以JSON格式返回你的分析结果：
-        ```json
+        返回严格格式的JSON，必须使用英文引号和标点，不要使用中文引号或标点:
         {{
             "task": "任务名称(classification/annotation/interpretation/enhancement)",
             "confidence": 0.xx,
             "reasoning": "你的分析理由"
         }}
-        ```
-        只返回有效的JSON，不要包含其他文本。
+        
+        不要返回markdown格式和其他任何文本，只返回纯JSON。避免使用中文标点如"，"、"："等，只使用英文标点。
         """.format(user_requirement=user_requirement)
 
         # 调用模型并解析结果
         analysis_response = analysis_model.invoke(prompt)
+        print(f"原始分析响应: {analysis_response[:100]}...")  # 打印响应开头部分用于调试
 
         # 提取JSON部分
         json_match = re.search(r'```json\s*(.*?)\s*```', analysis_response, re.DOTALL)
         if json_match:
             json_str = json_match.group(1)
+            print("从markdown代码块提取JSON")
         else:
-            json_str = analysis_response.strip()
+            # 尝试直接从响应中提取JSON对象
+            json_start = analysis_response.find('{')
+            json_end = analysis_response.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                json_str = analysis_response[json_start:json_end]
+                print("直接从文本提取JSON对象")
+            else:
+                json_str = analysis_response.strip()
+                print("使用整个响应作为JSON")
 
-        # 清理可能的额外字符
-        json_str = re.sub(r'[^\x00-\x7F]+', '', json_str)
+        # 清理和修复JSON字符串
+        # 1. 替换中文标点符号为英文标点符号
+        punctuation_map = {
+            '，': ',',
+            '。': '.',
+            '：': ':',
+            '"': '"',
+            '"': '"',
+            ''': "'",
+            ''': "'",
+            '！': '!',
+            '？': '?',
+            '（': '(',
+            '）': ')',
+            '【': '[',
+            '】': ']',
+            '、': ',',
+            '；': ';'
+        }
+        for cn_punct, en_punct in punctuation_map.items():
+            json_str = json_str.replace(cn_punct, en_punct)
+        
+        # 2. 清理非ASCII字符，但保留基本的中文文本
+        json_str = re.sub(r'[^\x00-\x7F\u4e00-\u9fff]+', '', json_str)
+        
+        # 3. 确保JSON键使用双引号
+        json_str = re.sub(r'(\w+):', r'"\1":', json_str)
+        
+        print(f"清理后的JSON字符串: {json_str[:100]}...")  # 打印处理后的JSON字符串开头
 
         try:
+            # 尝试解析JSON
             result = json.loads(json_str)
             # 创建结果对象
             parsed_result = AnalysisResult(
@@ -136,13 +173,78 @@ def analysis_node(state: ImageState) -> ImageState:
 
         except json.JSONDecodeError as e:
             print(f"JSON解析错误: {e}")
-            print(f"原始响应: {analysis_response}")
-            state["task"] = "interpretation"  # 默认任务
-            state["error"] = f"analysis_json_error: {str(e)}"
+            print(f"解析失败的JSON字符串: {json_str}")
+            
+            # 尝试通过正则表达式直接提取任务类型
+            task_match = re.search(r'"task"\s*:\s*"([^"]+)"', json_str)
+            if task_match:
+                task = task_match.group(1).lower()
+                print(f"通过正则表达式提取的任务: {task}")
+                
+                # 验证任务类型是否有效
+                if task in ["classification", "annotation", "interpretation", "enhancement"]:
+                    state["task"] = task
+                    print(f"使用正则提取的任务类型: {task}")
+                    
+                    # 尝试提取置信度
+                    confidence_match = re.search(r'"confidence"\s*:\s*(0\.\d+)', json_str)
+                    confidence = float(confidence_match.group(1)) if confidence_match else 0.5
+                    
+                    # 创建一个基本的结果对象
+                    parsed_result = AnalysisResult(
+                        task=task,
+                        confidence=confidence,
+                        reasoning="通过正则表达式从错误的JSON中提取"
+                    )
+                    
+                    state["analysis_result"] = parsed_result.model_dump()
+                    
+                    # 记录到历史
+                    state["history"].append({
+                        "step": "analysis",
+                        "result": parsed_result.model_dump()
+                    })
+                else:
+                    # 无法从正则提取有效任务，使用默认值
+                    state["task"] = "interpretation"  # 默认任务
+                    print(f"无法提取有效任务类型，使用默认值: interpretation")
+            else:
+                # 从用户需求智能判断任务类型
+                user_req = user_requirement.lower()
+                if "什么" in user_req or "识别" in user_req or "类别" in user_req or "分类" in user_req:
+                    task = "classification"
+                elif "找出" in user_req or "检测" in user_req or "标记" in user_req or "标注" in user_req or "位置" in user_req:
+                    task = "annotation"
+                elif "描述" in user_req or "说明" in user_req or "讲解" in user_req or "解释" in user_req:
+                    task = "interpretation"
+                elif "增强" in user_req or "提高" in user_req or "改善" in user_req or "优化" in user_req or "清晰" in user_req:
+                    task = "enhancement"
+                else:
+                    task = "interpretation"  # 默认任务
+                
+                state["task"] = task
+                print(f"从用户需求智能判断任务类型: {task}")
+                state["error"] = f"analysis_json_error: {str(e)}, 使用智能判断的任务类型"
+
+        # 释放分析模型资源
+        try:
+            del analysis_model
+            import gc
+            gc.collect()
+            # 尝试通知Ollama释放资源
+            try:
+                import requests
+                requests.post('http://localhost:11434/api/cancel', json={})
+                print("已请求Ollama释放phi4-mini分析模型资源")
+            except:
+                pass
+        except Exception as cleanup_err:
+            print(f"释放分析模型资源时出错: {str(cleanup_err)}")
 
     except Exception as e:
         state["error"] = f"analysis_error: {str(e)}"
         state["task"] = "interpretation"  # 默认任务
+        print(f"分析过程出现错误: {str(e)}")
 
     return state
 
@@ -216,6 +318,8 @@ def preprocess_node(state: ImageState) -> ImageState:
             image = cv2.resize(image, (224, 224))
             image = image / 255.0
             image = np.transpose(image, (2, 0, 1))  # CHW格式
+            # 注意：预处理后图像仍在CPU上作为NumPy数组
+            # 会在inference_node中将其转换为适当设备上的张量
         elif task == "annotation":
             # 保持原始图像用于YOLOv5
             pass
@@ -250,11 +354,29 @@ def model_selection_node(state: ImageState) -> ImageState:
         task = state["task"]
         print(f"开始加载模型，任务类型: {task}")
 
+        # 在加载新模型前先释放可能的旧模型资源
+        try:
+            if "model" in state and state["model"] is not None:
+                del state["model"]
+                import gc
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                print("已释放先前加载的模型资源")
+        except Exception as cleanup_err:
+            print(f"释放旧模型资源时出错: {str(cleanup_err)}")
+
         if task == "classification":
             from torchvision.models.resnet import ResNet50_Weights
             model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
             model.eval()
             model_name = "ResNet50"
+            
+            # 将模型移动到GPU如果可用
+            if torch.cuda.is_available():
+                model = model.cuda()
+                print("已将ResNet模型移动到GPU")
+
         elif task == "annotation":
             try:
                 try:
@@ -457,9 +579,17 @@ def inference_node(state: ImageState) -> ImageState:
 
         if task == "classification":
             image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0)
+            # 确保模型和输入张量在同一设备上
+            device = next(model.parameters()).device
+            print(f"模型设备: {device}")
+            image_tensor = image_tensor.to(device)
+            
             with torch.no_grad():
                 output = model(image_tensor)
             state["output"] = output.argmax(dim=1).item()
+            # 释放不再需要的模型
+            del model
+            torch.cuda.empty_cache()
 
         elif task == "annotation":
             original_image = cv2.imread(state["image_path"])
@@ -469,6 +599,9 @@ def inference_node(state: ImageState) -> ImageState:
             results = model(original_image)  # YOLOv5需要原始图像
             state["output"] = results.xyxy[0].cpu().numpy()
             state["original_image"] = original_image
+            # 释放不再需要的YOLO模型
+            del model
+            torch.cuda.empty_cache()
             
         elif task == "enhancement":
             try:
@@ -514,6 +647,10 @@ def inference_node(state: ImageState) -> ImageState:
                     enhanced_image = cv2.cvtColor(output.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
                     state["output"] = enhanced_image
                 
+                # 释放增强模型资源
+                del model
+                torch.cuda.empty_cache()
+                
                 # 保存对比图像
                 comparison_image = np.hstack((original_image, cv2.resize(state["output"], (original_image.shape[1], original_image.shape[0]))))
                 comparison_path = "image_comparison.jpg"
@@ -557,12 +694,30 @@ def inference_node(state: ImageState) -> ImageState:
             """
             response = model.invoke(prompt, images=[image_bytes])
             state["output"] = response.strip()
+            
+            # 尝试告诉Ollama释放资源
+            try:
+                import requests
+                requests.post('http://localhost:11434/api/cancel', json={})
+                print("已请求Ollama释放LLaVA模型资源")
+            except Exception as release_err:
+                print(f"请求释放Ollama资源失败: {str(release_err)}")
+            
         else:
             raise ValueError(f"不支持的任务类型: {task}")
 
         # 验证输出是否存在且有效
         if "output" not in state or state["output"] is None:
             raise ValueError(f"模型未能生成有效输出")
+
+        # 清理模型引用和显存
+        if task in ["classification", "annotation", "enhancement"]:
+            if "model" in state:
+                del state["model"]
+                import gc
+                gc.collect()
+                torch.cuda.empty_cache()
+                print(f"{task}任务模型资源已释放")
 
         # 记录到历史
         if "history" in state:
@@ -845,9 +1000,57 @@ def main():
         except Exception as e:
             print(f"显示图像时出错: {str(e)}")
 
+    # 释放模型和GPU显存
+    cleanup_resources()
+    
     print("=" * 50)
 
     return final_state
+
+# 添加清理资源的函数
+def cleanup_resources():
+    try:
+        print("开始释放模型资源...")
+        
+        # 清理Torch占用的GPU内存
+        if torch.cuda.is_available():
+            # 确保所有GPU操作都已完成
+            torch.cuda.synchronize()
+            
+            # 清理缓存
+            torch.cuda.empty_cache()
+            
+            # 关闭和清除模型
+            print("释放GPU显存...")
+            import gc
+            gc.collect()
+            
+            # 检查释放后的显存状态
+            if hasattr(torch.cuda, 'memory_allocated'):
+                allocated_memory = torch.cuda.memory_allocated() / (1024 ** 2)
+                reserved_memory = torch.cuda.memory_reserved() / (1024 ** 2)
+                print(f"GPU显存状态 - 已分配: {allocated_memory:.2f}MB, 已保留: {reserved_memory:.2f}MB")
+        
+        # 尝试释放Ollama相关资源
+        try:
+            import requests
+            # 告诉Ollama服务停止当前模型运行（如果支持）
+            try:
+                # 请求Ollama API释放模型
+                requests.post('http://localhost:11434/api/cancel', json={})
+                print("已请求Ollama取消当前运行的模型")
+            except Exception as ollama_err:
+                print(f"Ollama API请求失败: {str(ollama_err)}")
+                
+            # 手动进行垃圾收集
+            gc.collect()
+            print("已执行垃圾收集")
+        except Exception as api_err:
+            print(f"尝试释放Ollama资源时出错: {str(api_err)}")
+            
+        print("资源清理完成")
+    except Exception as e:
+        print(f"清理资源时出错: {str(e)}")
 
 
 if __name__ == "__main__":
