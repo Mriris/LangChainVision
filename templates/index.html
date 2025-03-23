@@ -1,100 +1,155 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
-    <title>图像分析系统</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像分析工作流</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        body {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-            background-color: #f8f9fa;
+        .header {
+            padding: 60px 0;
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            margin-bottom: 40px;
         }
-        .form-container {
-            max-width: 700px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 2rem;
+        .task-card {
+            height: 100%;
+            transition: transform 0.3s;
+            border: none;
             border-radius: 10px;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        .preview-container {
-            margin-top: 1rem;
-            text-align: center;
+        .task-card:hover {
+            transform: translateY(-5px);
         }
-        #image-preview {
-            max-width: 100%;
-            max-height: 300px;
-            border-radius: 5px;
-            display: none;
+        .card-icon {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+        .upload-container {
+            padding: 30px;
+            border-radius: 10px;
+            background-color: #f8f9fa;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .footer {
+            margin-top: 60px;
+            padding: 20px 0;
+            background-color: #f8f9fa;
         }
     </style>
 </head>
 <body>
+    <header class="header">
+        <div class="container text-center">
+            <h1>智能图像分析系统</h1>
+            <p class="lead">基于人工智能的图像分析工具，支持多种图像处理任务</p>
+        </div>
+    </header>
+
     <div class="container">
-        <div class="form-container">
-            <h1 class="text-center mb-4">图像分析系统</h1>
-            
-            <!-- 闪现消息 -->
-            {% with messages = get_flashed_messages() %}
-                {% if messages %}
-                    {% for message in messages %}
-                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                            {{ message }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-            
-            <!-- 上传表单 -->
-            <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
-                <div class="mb-3">
-                    <label for="file" class="form-label">选择图像文件</label>
-                    <input type="file" class="form-control" id="file" name="file" accept=".jpg,.jpeg,.png" required onchange="previewImage(this)">
+        <div class="row mb-5">
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-tag-fill text-primary card-icon"></i>
+                        <h5 class="card-title">图像分类</h5>
+                        <p class="card-text">识别图像中的主要对象或类别</p>
+                        <p class="text-muted small">示例：这是什么动物？</p>
+                    </div>
                 </div>
-                
-                <div class="preview-container">
-                    <img id="image-preview" src="#" alt="图像预览" />
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-bounding-box text-success card-icon"></i>
+                        <h5 class="card-title">物体检测</h5>
+                        <p class="card-text">检测并定位图像中的多个对象</p>
+                        <p class="text-muted small">示例：找出图中所有的物体</p>
+                    </div>
                 </div>
-                
-                <div class="mb-3">
-                    <label for="requirement" class="form-label">请输入分析需求</label>
-                    <textarea class="form-control" id="requirement" name="requirement" rows="3" placeholder="例如：这是什么动物？找出所有物体及其位置" required></textarea>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-chat-square-text text-info card-icon"></i>
+                        <h5 class="card-title">图像描述</h5>
+                        <p class="card-text">提供图像的详细文字描述</p>
+                        <p class="text-muted small">示例：描述图片内容</p>
+                    </div>
                 </div>
-                
-                <div class="d-grid gap-2">
-                    <button type="submit" class="btn btn-primary">开始分析</button>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-image-alt text-warning card-icon"></i>
+                        <h5 class="card-title">图像增强</h5>
+                        <p class="card-text">提高图像质量和清晰度</p>
+                        <p class="text-muted small">示例：提高图像清晰度</p>
+                    </div>
                 </div>
-            </form>
-            
-            <div class="mt-4">
-                <h5>分析任务示例：</h5>
-                <ul>
-                    <li><strong>分类</strong> - "图中是什么动物？"，"图中的主要物体是什么？"</li>
-                    <li><strong>物体检测</strong> - "检测图像中的所有物体"，"找出图中的所有人和物品"</li>
-                    <li><strong>图像描述</strong> - "描述图像中的场景"，"详细描述图片中发生了什么"</li>
-                </ul>
             </div>
         </div>
+
+        <div class="upload-container">
+            <h3 class="mb-4 text-center">上传图像进行分析</h3>
+            
+            <form action="/upload" method="post" enctype="multipart/form-data">
+                <div class="mb-4">
+                    <label for="file" class="form-label">选择图像文件（.jpg, .jpeg, .png）</label>
+                    <input type="file" class="form-control" id="file" name="file" accept=".jpg,.jpeg,.png" required>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="requirement" class="form-label">分析需求（请用中文描述您想要实现的目标）</label>
+                    <textarea class="form-control" id="requirement" name="requirement" rows="3" placeholder="例如：这是什么动物？找出图中所有的物体。请描述这张图片。提高图像质量和清晰度。" required></textarea>
+                    <div class="form-text">系统将根据您的需求自动选择最合适的分析任务</div>
+                </div>
+                
+                <div class="text-center">
+                    <button type="submit" class="btn btn-primary btn-lg">开始分析</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="mt-5">
+            <h4>使用说明</h4>
+            <ul class="list-group">
+                <li class="list-group-item d-flex">
+                    <span class="badge bg-primary rounded-pill me-3">1</span>
+                    <div>
+                        <strong>图像分类</strong> - 用于识别图像中主要对象或类别。输入"这是什么？"、"识别图中物体"等问题。
+                    </div>
+                </li>
+                <li class="list-group-item d-flex">
+                    <span class="badge bg-success rounded-pill me-3">2</span>
+                    <div>
+                        <strong>物体检测</strong> - 用于检测并标记图像中的多个对象。输入"找出所有物体"、"标记图中的人和动物"等问题。
+                    </div>
+                </li>
+                <li class="list-group-item d-flex">
+                    <span class="badge bg-info rounded-pill me-3">3</span>
+                    <div>
+                        <strong>图像描述</strong> - 用于生成图像的详细描述。输入"描述这张图片"、"图片中发生了什么"等问题。
+                    </div>
+                </li>
+                <li class="list-group-item d-flex">
+                    <span class="badge bg-warning rounded-pill me-3">4</span>
+                    <div>
+                        <strong>图像增强</strong> - 用于提高图像质量和清晰度。输入"提高图像质量"、"增强图像清晰度"、"使图像更加清晰"等问题。
+                    </div>
+                </li>
+            </ul>
+        </div>
     </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function previewImage(input) {
-            var preview = document.getElementById('image-preview');
-            if (input.files && input.files[0]) {
-                var reader = new FileReader();
-                reader.onload = function(e) {
-                    preview.src = e.target.result;
-                    preview.style.display = 'block';
-                }
-                reader.readAsDataURL(input.files[0]);
-            } else {
-                preview.style.display = 'none';
-            }
-        }
-    </script>
+
+    <footer class="footer mt-5">
+        <div class="container text-center">
+            <p class="mb-0">© 2024 图像分析工作流 | 基于LangGraph和深度学习</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html> 

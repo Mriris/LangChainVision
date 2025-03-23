@@ -121,12 +121,61 @@ def upload_file():
                     result['detections'] = final_state['detection_results']
                     print(f"从final_state获取检测结果: {len(result['detections'])}个")
             
+            # 特殊处理图像增强任务
+            elif result['task'] == 'enhancement':
+                # 检查备份的增强结果
+                if 'enhancement' in final_state:
+                    enhancement = final_state['enhancement']
+                    if not result['message'] and enhancement.get('message'):
+                        result['message'] = enhancement['message']
+                        print(f"从enhancement恢复消息: {result['message']}")
+                
+                # 获取增强图像和对比图像的路径
+                enhanced_path = final_state.get('enhanced_image_path', 'enhanced_image.jpg')
+                comparison_path = final_state.get('comparison_image_path', 'image_comparison.jpg')
+                
+                # 检查图像文件是否存在，并添加到结果中
+                if os.path.exists(enhanced_path):
+                    try:
+                        with open(enhanced_path, 'rb') as img_file:
+                            enhanced_data = base64.b64encode(img_file.read()).decode('utf-8')
+                        result['enhanced_image'] = enhanced_data
+                        print(f"增强图像已转换为base64，长度: {len(enhanced_data) if enhanced_data else 0}")
+                    except Exception as e:
+                        print(f"读取增强图像失败: {str(e)}")
+                
+                if os.path.exists(comparison_path):
+                    try:
+                        with open(comparison_path, 'rb') as img_file:
+                            comparison_data = base64.b64encode(img_file.read()).decode('utf-8')
+                        result['comparison_image'] = comparison_data
+                        print(f"对比图像已转换为base64，长度: {len(comparison_data) if comparison_data else 0}")
+                    except Exception as e:
+                        print(f"读取对比图像失败: {str(e)}")
+                
+                # 确保设置结果消息
+                if not result['message']:
+                    result['message'] = "图像增强完成！已生成高清晰度图像。"
+                    print(f"已设置默认增强结果消息: {result['message']}")
+            
             # 特殊处理图像描述任务
-            elif result['task'] == 'interpretation' and not result['message'] and 'output' in final_state:
-                interpretation_text = final_state['output']
-                if isinstance(interpretation_text, str) and interpretation_text.strip():
-                    result['message'] = f"图像描述：\n{interpretation_text}"
-                    print(f"从output恢复图像描述: 已设置(长度:{len(interpretation_text)})")
+            elif result['task'] == 'interpretation':
+                # 首先检查默认结果消息
+                if not result['message'] and 'result_message' in final_state:
+                    result['message'] = final_state.get('result_message')
+                    print(f"从result_message恢复图像描述: {result['message']}")
+                
+                # 如果仍然没有消息，尝试从output获取
+                if not result['message'] and 'output' in final_state:
+                    interpretation_text = final_state['output']
+                    if isinstance(interpretation_text, str) and interpretation_text.strip():
+                        result['message'] = f"图像描述：\n{interpretation_text}"
+                        print(f"从output恢复图像描述: 已设置(长度:{len(interpretation_text)})")
+                
+                # 如果仍然没有消息，设置默认消息
+                if not result['message']:
+                    result['message'] = "图像描述未能生成，可能是模型连接问题。请确保Ollama服务正在运行，并已下载llava模型。"
+                    print("设置默认图像描述结果消息")
             
             # 确保分类结果不为空
             if result['task'] == 'classification' and not result['message'] and 'output' in final_state:

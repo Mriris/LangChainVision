@@ -7,6 +7,7 @@ from typing import Dict, Any, TypedDict, List, Annotated, Literal
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, END
 import matplotlib
+import time
 
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -24,7 +25,7 @@ load_dotenv()
 class ImageState(TypedDict):
     image_path: str
     image: Any
-    task: Literal["classification", "annotation", "interpretation", ""]
+    task: Literal["classification", "annotation", "interpretation", "enhancement", ""]
     model: Any
     output: Any
     user_requirement: str
@@ -86,13 +87,14 @@ def analysis_node(state: ImageState) -> ImageState:
         1. classification: 识别图像中的主要对象或类别（例如："这是什么动物？"）
         2. annotation: 检测并定位图像中的多个对象（例如："找出所有物体及其位置"）
         3. interpretation: 提供图像的详细描述（例如："描述图像中发生的事情"）
+        4. enhancement: 提高图像质量、超分辨率或清晰度（例如："提高图像质量"、"增强图像清晰度"）
 
         请分析以下用户需求: "{user_requirement}"
 
         以JSON格式返回你的分析结果：
         ```json
         {{
-            "task": "任务名称(classification/annotation/interpretation)",
+            "task": "任务名称(classification/annotation/interpretation/enhancement)",
             "confidence": 0.xx,
             "reasoning": "你的分析理由"
         }}
@@ -217,6 +219,10 @@ def preprocess_node(state: ImageState) -> ImageState:
         elif task == "annotation":
             # 保持原始图像用于YOLOv5
             pass
+        elif task == "enhancement":
+            # 保持原始图像用于SwinIR
+            state["original_image"] = image.copy()
+            pass
         elif task == "interpretation":
             image = cv2.resize(image, (384, 384))
             image = image / 255.0
@@ -253,6 +259,8 @@ def model_selection_node(state: ImageState) -> ImageState:
             try:
                 try:
                     # 首先尝试使用GPU
+                    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                    print(f"YOLOv5将使用设备: {device}")
                     model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
                     model_name = "YOLOv5s (GPU)"
                 except Exception as gpu_err:
@@ -265,6 +273,112 @@ def model_selection_node(state: ImageState) -> ImageState:
             except Exception as yolo_err:
                 print(f"YOLOv5加载错误: {str(yolo_err)}")
                 raise RuntimeError(f"无法加载YOLOv5模型: {str(yolo_err)}")
+        elif task == "enhancement":
+            try:
+                # 导入必要的库
+                import sys
+                import os
+                
+                # SwinIR模型定义和加载
+                try:
+                    # 动态导入SwinIR模型
+                    current_dir = os.path.dirname(os.path.abspath(__file__))
+                    if not os.path.exists(os.path.join(current_dir, "models")):
+                        os.makedirs(os.path.join(current_dir, "models"))
+                        
+                    # 检查SwinIR模型文件
+                    model_path = os.path.join(current_dir, "models", "swinir_model.py")
+                    if not os.path.exists(model_path):
+                        import urllib.request
+                        # 使用代理下载模型定义文件
+                        os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
+                        os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
+                        url = "https://raw.githubusercontent.com/JingyunLiang/SwinIR/main/models/network_swinir.py"
+                        urllib.request.urlretrieve(url, model_path)
+                        print(f"已下载SwinIR模型定义文件到: {model_path}")
+                    
+                    # 将模型目录添加到系统路径
+                    sys.path.append(os.path.join(current_dir, "models"))
+                    from swinir_model import SwinIR
+                    
+                    # 创建SwinIR模型实例
+                    model = SwinIR(
+                        upscale=4,
+                        img_size=64,
+                        window_size=8,
+                        img_range=1.,
+                        depths=[6, 6, 6, 6, 6, 6],
+                        embed_dim=180,
+                        num_heads=[6, 6, 6, 6, 6, 6],
+                        mlp_ratio=2,
+                        upsampler='pixelshuffle',
+                        resi_connection='1conv'
+                    )
+                    
+                    # 检查并加载预训练的权重
+                    weights_path = os.path.join(current_dir, "weights", "001_classicalSR_DF2K_s64w8_SwinIR-M_x4.pth")
+                    if os.path.exists(weights_path):
+                        print(f"找到SwinIR预训练权重文件: {weights_path}")
+                        # 确定使用的设备
+                        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                        print(f"将使用设备: {device}")
+                        # 加载权重，允许自动选择设备
+                        pretrained_model = torch.load(weights_path, map_location=device)
+                        model.load_state_dict(pretrained_model['params'] if 'params' in pretrained_model else pretrained_model, strict=True)
+                        model_name = "SwinIR (用于图像增强)"
+                        print(f"成功加载SwinIR预训练权重")
+                    else:
+                        # 尝试加载其他可能存在的权重文件
+                        alt_weights_path = os.path.join(current_dir, "weights", "SwinIR_model.pth")
+                        if os.path.exists(alt_weights_path):
+                            print(f"找到替代SwinIR权重文件: {alt_weights_path}")
+                            # 确定使用的设备
+                            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                            print(f"将使用设备: {device}")
+                            pretrained_model = torch.load(alt_weights_path, map_location=device)
+                            model.load_state_dict(pretrained_model['params'] if 'params' in pretrained_model else pretrained_model, strict=False)
+                            model_name = "SwinIR (使用替代权重)"
+                            print(f"成功加载替代SwinIR权重")
+                        else:
+                            print(f"未找到SwinIR权重文件，使用未初始化模型")
+                            model_name = "SwinIR (未初始化)"
+                    
+                    # 确保使用可用设备
+                    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                    model = model.to(device)
+                    model.eval()
+                    print(f"SwinIR模型已加载到设备: {device}, 类型: {device.type}")
+                    # 确认CUDA是否可用
+                    if torch.cuda.is_available():
+                        print(f"CUDA可用，使用GPU: {torch.cuda.get_device_name(0)}")
+                    else:
+                        print("CUDA不可用，使用CPU模式")
+                    
+                except Exception as swinir_err:
+                    print(f"SwinIR模型加载错误: {str(swinir_err)}")
+                    # 备用方案：使用OpenCV的超分辨率模型
+                    print("尝试使用OpenCV的EDSR模型...")
+                    sr_model = cv2.dnn_superres.DnnSuperResImpl_create()
+                    edsr_path = os.path.join(current_dir, "weights", "EDSR_x4.pb")
+                    if os.path.exists(edsr_path):
+                        sr_model.readModel(edsr_path)
+                        sr_model.setModel("edsr", 4)  # 4x超分辨率
+                        model = sr_model
+                        model_name = "EDSR (OpenCV超分辨率)"
+                        print(f"成功加载EDSR模型")
+                    else:
+                        print(f"未找到EDSR模型文件: {edsr_path}")
+                        # 最后的备用计划：检查是否有RealESRGAN模型
+                        esrgan_path = os.path.join(current_dir, "weights", "RealESRGAN_x4plus.pth")
+                        if os.path.exists(esrgan_path):
+                            print(f"找到RealESRGAN模型，但尚未实现加载逻辑")
+                            raise RuntimeError(f"暂不支持RealESRGAN")
+                        else:
+                            raise RuntimeError(f"未找到任何可用的图像增强模型")
+                
+            except Exception as e:
+                print(f"图像增强模型加载错误: {str(e)}")
+                raise RuntimeError(f"无法加载图像增强模型: {str(e)}")
         elif task == "interpretation":
             try:
                 model = OllamaLLM(
@@ -318,6 +432,12 @@ def model_selection_node(state: ImageState) -> ImageState:
                             self.xyxy = [torch.zeros((0, 6))]
                     return DummyResults()
             state["model"] = DummyYOLO()
+        elif task == "enhancement":
+            # 创建一个返回固定文本的假SwinIR
+            class DummySwinIR:
+                def invoke(self, prompt, images=None):
+                    return "无法加载SwinIR模型，请检查Ollama服务是否正在运行"
+            state["model"] = DummySwinIR()
         elif task == "interpretation":
             # 创建一个返回固定文本的假LLM
             class DummyLLM:
@@ -349,6 +469,67 @@ def inference_node(state: ImageState) -> ImageState:
             results = model(original_image)  # YOLOv5需要原始图像
             state["output"] = results.xyxy[0].cpu().numpy()
             state["original_image"] = original_image
+            
+        elif task == "enhancement":
+            try:
+                # 获取原始图像
+                original_image = state.get("original_image")
+                if original_image is None:
+                    original_image = cv2.imread(state["image_path"])
+                    if original_image is None:
+                        raise ValueError(f"无法读取图像文件: {state['image_path']}")
+                    state["original_image"] = original_image
+                
+                # 检查模型类型并进行相应处理
+                if isinstance(model, cv2.dnn_superres.DnnSuperResImpl):
+                    # 使用OpenCV的DNN超分辨率
+                    enhanced_image = model.upsample(original_image)
+                    state["output"] = enhanced_image
+                else:
+                    # 使用SwinIR或其他PyTorch模型
+                    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                    print(f"增强推理使用设备: {device}")
+                    
+                    # 预处理图像
+                    img_bgr = original_image
+                    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+                    
+                    # 将图像转换为张量
+                    img_tensor = torch.from_numpy(img_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
+                    img_tensor = img_tensor.to(device)
+                    
+                    start_time = time.time()
+                    # 执行推理
+                    with torch.no_grad():
+                        output = model(img_tensor)
+                    
+                    inference_time = time.time() - start_time
+                    print(f"增强推理完成，耗时: {inference_time:.2f}秒")
+                    
+                    # 后处理
+                    output = output.squeeze().float().cpu().clamp_(0, 1).numpy()
+                    output = (output * 255.0).round().astype(np.uint8)
+                    
+                    # 转回BGR格式用于OpenCV
+                    enhanced_image = cv2.cvtColor(output.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
+                    state["output"] = enhanced_image
+                
+                # 保存对比图像
+                comparison_image = np.hstack((original_image, cv2.resize(state["output"], (original_image.shape[1], original_image.shape[0]))))
+                comparison_path = "image_comparison.jpg"
+                cv2.imwrite(comparison_path, comparison_image)
+                state["comparison_image_path"] = comparison_path
+                
+                # 保存增强后的图像
+                enhanced_path = "enhanced_image.jpg"
+                cv2.imwrite(enhanced_path, state["output"])
+                state["enhanced_image_path"] = enhanced_path
+                
+            except Exception as e:
+                print(f"图像增强推理错误: {str(e)}")
+                state["error"] = f"enhancement_inference_error: {str(e)}"
+                # 提供默认输出以防止后续步骤出错
+                state["output"] = state.get("original_image", np.zeros((100, 100, 3), dtype=np.uint8))
 
         elif task == "interpretation":
             # 将图像从 (C, H, W) 转换为 (H, W, C)
@@ -401,6 +582,8 @@ def inference_node(state: ImageState) -> ImageState:
                 state["output"] = 0  # 默认类别ID
             elif task == "annotation":
                 state["output"] = np.array([])  # 空检测结果
+            elif task == "enhancement":
+                state["output"] = state.get("original_image", np.zeros((100, 100, 3), dtype=np.uint8))
             elif task == "interpretation":
                 state["output"] = "无法生成图像描述"  # 默认描述
 
@@ -496,6 +679,37 @@ def output_node(state: ImageState) -> ImageState:
                 "path": output_path,
                 "detections": detection_results
             }
+            
+        elif task == "enhancement":
+            # 获取增强后的图像路径
+            enhanced_path = state.get("enhanced_image_path", "enhanced_image.jpg")
+            comparison_path = state.get("comparison_image_path", "image_comparison.jpg")
+            
+            # 获取原始图像和增强图像的尺寸
+            original_image = state.get("original_image")
+            enhanced_image = state.get("output")
+            
+            if original_image is not None and enhanced_image is not None:
+                orig_h, orig_w = original_image.shape[:2]
+                enh_h, enh_w = enhanced_image.shape[:2]
+                
+                # 提供有关增强的详细信息
+                enhancement_info = f"原始图像分辨率: {orig_w}x{orig_h} → 增强后分辨率: {enh_w}x{enh_h}"
+                scale_factor = round(enh_w / orig_w, 1)
+                
+                result = f"图像增强完成！\n{enhancement_info}\n放大倍数: {scale_factor}x\n增强图像已保存至 {enhanced_path}\n对比图像已保存至 {comparison_path}"
+            else:
+                result = f"图像增强完成！增强图像已保存至 {enhanced_path}\n对比图像已保存至 {comparison_path}"
+            
+            print(result)
+            state["result_message"] = result
+            
+            # 作为备份，在状态集合中再添加一个副本
+            state["enhancement"] = {
+                "message": state["result_message"],
+                "enhanced_path": enhanced_path,
+                "comparison_path": comparison_path
+            }
 
         elif task == "interpretation":
             result = f"图像描述：\n{output}"
@@ -527,6 +741,8 @@ def output_node(state: ImageState) -> ImageState:
                     state["result_message"] = state["annotations"]["message"]
                 else:
                     state["result_message"] = f"标注完成，原始结果: {len(boxes)} 个物体"
+            elif task == "enhancement":
+                state["result_message"] = f"图像增强完成！增强图像已保存至 {enhanced_path}\n对比图像已保存至 {comparison_path}"
             elif task == "interpretation":
                 state["result_message"] = f"图像描述 (截断): {str(output)[:100]}..."
 
@@ -612,6 +828,22 @@ def main():
 
     if final_state.get("error"):
         print(f"\n遇到错误: {final_state.get('error')}")
+
+    # 对于增强任务，显示图像
+    if final_state.get("task") == "enhancement" and not final_state.get("error"):
+        try:
+            enhanced_path = final_state.get("enhanced_image_path", "enhanced_image.jpg")
+            comparison_path = final_state.get("comparison_image_path", "image_comparison.jpg")
+            
+            if os.path.exists(comparison_path):
+                comparison_img = cv2.imread(comparison_path)
+                plt.figure(figsize=(12, 6))
+                plt.imshow(cv2.cvtColor(comparison_img, cv2.COLOR_BGR2RGB))
+                plt.title("对比图（左：原图，右：增强后）")
+                plt.axis('off')
+                plt.show()
+        except Exception as e:
+            print(f"显示图像时出错: {str(e)}")
 
     print("=" * 50)
 
