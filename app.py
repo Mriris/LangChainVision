@@ -121,6 +121,13 @@ def upload_file():
                     result['detections'] = final_state['detection_results']
                     print(f"从final_state获取检测结果: {len(result['detections'])}个")
             
+            # 特殊处理图像描述任务
+            elif result['task'] == 'interpretation' and not result['message'] and 'output' in final_state:
+                interpretation_text = final_state['output']
+                if isinstance(interpretation_text, str) and interpretation_text.strip():
+                    result['message'] = f"图像描述：\n{interpretation_text}"
+                    print(f"从output恢复图像描述: 已设置(长度:{len(interpretation_text)})")
+            
             # 确保分类结果不为空
             if result['task'] == 'classification' and not result['message'] and 'output' in final_state:
                 try:
