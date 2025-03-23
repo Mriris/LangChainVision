@@ -51,6 +51,26 @@
             border-radius: 5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+        .description-text {
+            font-size: 1.05rem;
+            line-height: 1.7;
+            color: #212529;
+            white-space: pre-line;
+            text-align: justify;
+            padding: 10px;
+        }
+        .description-section {
+            margin-bottom: 15px;
+            border-left: 4px solid #17a2b8;
+            padding-left: 15px;
+            background-color: rgba(23, 162, 184, 0.05);
+            border-radius: 0 5px 5px 0;
+        }
+        .description-title {
+            font-weight: 600;
+            color: #17a2b8;
+            margin-bottom: 8px;
+        }
         @media (min-width: 768px) {
             .comparison-container {
                 flex-direction: row;
@@ -156,13 +176,27 @@
                         </div>
                     {% endif %}
                 {% elif result.task == 'interpretation' and result.message %}
-                    <div class="alert alert-info">
-                        <pre class="mb-0">{{ result.message }}</pre>
+                    <div class="card mb-4">
+                        <div class="card-header bg-info text-white">
+                            <h4 class="mb-0"><i class="bi bi-file-text"></i> 图像描述结果</h4>
+                        </div>
+                        <div class="card-body">
+                            <div id="description-content" class="description-text">
+                                {{ result.message }}
+                            </div>
+                        </div>
                     </div>
                 {% elif result.task == 'enhancement' %}
                     {% if result.message %}
-                        <div class="alert alert-warning">
-                            {{ result.message|nl2br }}
+                        <div class="card mb-4">
+                            <div class="card-header bg-warning text-dark">
+                                <h4 class="mb-0"><i class="bi bi-image-alt"></i> 图像增强结果</h4>
+                            </div>
+                            <div class="card-body">
+                                <div class="description-text">
+                                    {{ result.message }}
+                                </div>
+                            </div>
                         </div>
                     {% endif %}
                     
@@ -193,5 +227,57 @@
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // 处理图像描述文本格式化
+        document.addEventListener('DOMContentLoaded', function() {
+            const descriptionElement = document.getElementById('description-content');
+            if (descriptionElement) {
+                const originalText = descriptionElement.textContent.trim();
+                
+                // 检查是否包含数字列表格式 (例如: "1. ")
+                if (originalText.match(/^\d+\.\s/m)) {
+                    // 分割为段落
+                    const paragraphs = originalText.split(/\n\s*\n/);
+                    let formattedText = '';
+                    
+                    // 处理每个段落
+                    paragraphs.forEach(paragraph => {
+                        paragraph = paragraph.trim();
+                        
+                        // 检测是否为标题段落（包含数字前缀）
+                        const titleMatch = paragraph.match(/^(\d+)\.\s+(.*?)[:：]/);
+                        
+                        if (titleMatch) {
+                            // 这是一个带编号的部分
+                            const number = titleMatch[1];
+                            const title = titleMatch[2];
+                            const content = paragraph.substring(titleMatch[0].length).trim();
+                            
+                            // 创建带样式的部分
+                            formattedText += `<div class="description-section">
+                                                <div class="description-title">第${number}部分: ${title}</div>
+                                                <div>${content}</div>
+                                              </div>`;
+                        } else if (paragraph.startsWith('图像描述：')) {
+                            // 处理开头的标题
+                            formattedText += `<h5 class="text-info mb-3">${paragraph.split('\n')[0]}</h5>`;
+                            
+                            // 如果有剩余文本，添加它
+                            const remainingText = paragraph.substring('图像描述：'.length).trim();
+                            if (remainingText) {
+                                formattedText += `<p>${remainingText}</p>`;
+                            }
+                        } else {
+                            // 普通段落
+                            formattedText += `<p>${paragraph}</p>`;
+                        }
+                    });
+                    
+                    descriptionElement.innerHTML = formattedText;
+                }
+            }
+        });
+    </script>
 </body>
 </html> 
