@@ -242,6 +242,7 @@ def preprocess_node(state: ImageState) -> ImageState:
 def model_selection_node(state: ImageState) -> ImageState:
     try:
         task = state["task"]
+        print(f"开始加载模型，任务类型: {task}")
 
         if task == "classification":
             from torchvision.models.resnet import ResNet50_Weights
@@ -249,19 +250,42 @@ def model_selection_node(state: ImageState) -> ImageState:
             model.eval()
             model_name = "ResNet50"
         elif task == "annotation":
-            model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
-            model_name = "YOLOv5s"
+            try:
+                try:
+                    # 首先尝试使用GPU
+                    model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+                    model_name = "YOLOv5s (GPU)"
+                except Exception as gpu_err:
+                    print(f"YOLOv5 GPU加载错误: {str(gpu_err)}")
+                    print("尝试使用CPU加载YOLOv5...")
+                    # 如果失败，使用CPU
+                    model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True, force_reload=True, device='cpu')
+                    model_name = "YOLOv5s (CPU)"
+                print(f"成功加载模型: {model_name}")
+            except Exception as yolo_err:
+                print(f"YOLOv5加载错误: {str(yolo_err)}")
+                raise RuntimeError(f"无法加载YOLOv5模型: {str(yolo_err)}")
         elif task == "interpretation":
-            model = OllamaLLM(
-                model="llava:13b",
-                base_url="http://localhost:11434",
-                temperature=0.7  # 适当的温度，让描述更丰富
-            )
-            model_name = "LLaVA-13B"
+            try:
+                model = OllamaLLM(
+                    model="llava:13b",
+                    base_url="http://localhost:11434",
+                    temperature=0.7
+                )
+                # 测试模型连接
+                test_result = model.invoke("测试连接")
+                if not test_result:
+                    raise RuntimeError("LLaVA模型返回空结果")
+                model_name = "LLaVA-13B"
+            except Exception as llm_err:
+                print(f"LLM模型加载错误: {str(llm_err)}")
+                print("请确保Ollama服务正在运行，并已下载llava:13b模型")
+                raise RuntimeError(f"无法加载或连接LLM模型: {str(llm_err)}")
         else:
             raise ValueError(f"不支持的任务类型: {task}")
 
         state["model"] = model
+        print(f"模型 '{model_name}' 加载成功")
 
         # 记录到历史
         if "history" in state:
@@ -272,7 +296,34 @@ def model_selection_node(state: ImageState) -> ImageState:
             })
 
     except Exception as e:
-        state["error"] = f"model_selection_error: {str(e)}"
+        error_msg = f"model_selection_error: {str(e)}"
+        print(error_msg)
+        state["error"] = error_msg
+        # 为了防止后续步骤失败，给model设置一个占位符
+        if task == "classification":
+            # 创建一个简单的dummy模型
+            class DummyModel:
+                def __call__(self, x):
+                    return torch.tensor([[1.0]])
+            state["model"] = DummyModel()
+        elif task == "annotation":
+            # 创建一个返回空检测结果的假YOLOv5模型
+            class DummyYOLO:
+                def __init__(self):
+                    self.names = {0: "person", 1: "object"}
+                
+                def __call__(self, img):
+                    class DummyResults:
+                        def __init__(self):
+                            self.xyxy = [torch.zeros((0, 6))]
+                    return DummyResults()
+            state["model"] = DummyYOLO()
+        elif task == "interpretation":
+            # 创建一个返回固定文本的假LLM
+            class DummyLLM:
+                def invoke(self, prompt, images=None):
+                    return "无法加载LLM模型，请检查Ollama服务是否正在运行"
+            state["model"] = DummyLLM()
 
     return state
 
@@ -292,6 +343,9 @@ def inference_node(state: ImageState) -> ImageState:
 
         elif task == "annotation":
             original_image = cv2.imread(state["image_path"])
+            if original_image is None:
+                raise ValueError(f"无法读取图像文件: {state['image_path']}")
+                
             results = model(original_image)  # YOLOv5需要原始图像
             state["output"] = results.xyxy[0].cpu().numpy()
             state["original_image"] = original_image
@@ -322,6 +376,12 @@ def inference_node(state: ImageState) -> ImageState:
             """
             response = model.invoke(prompt, images=[image_bytes])
             state["output"] = response.strip()
+        else:
+            raise ValueError(f"不支持的任务类型: {task}")
+
+        # 验证输出是否存在且有效
+        if "output" not in state or state["output"] is None:
+            raise ValueError(f"模型未能生成有效输出")
 
         # 记录到历史
         if "history" in state:
@@ -332,7 +392,17 @@ def inference_node(state: ImageState) -> ImageState:
             })
 
     except Exception as e:
-        state["error"] = f"inference_error: {str(e)}"
+        error_msg = f"inference_error: {str(e)}"
+        print(error_msg)
+        state["error"] = error_msg
+        # 确保有默认输出，防止后续步骤出错
+        if "output" not in state:
+            if task == "classification":
+                state["output"] = 0  # 默认类别ID
+            elif task == "annotation":
+                state["output"] = np.array([])  # 空检测结果
+            elif task == "interpretation":
+                state["output"] = "无法生成图像描述"  # 默认描述
 
     return state
 
@@ -341,6 +411,11 @@ def inference_node(state: ImageState) -> ImageState:
 def output_node(state: ImageState) -> ImageState:
     try:
         task = state["task"]
+        
+        # 检查输出是否存在
+        if "output" not in state:
+            raise KeyError("state中缺少'output'键，可能是推理阶段未成功完成")
+        
         output = state["output"]
 
         if task == "classification":
@@ -360,6 +435,8 @@ def output_node(state: ImageState) -> ImageState:
             original_image = state.get("original_image")
             if original_image is None:
                 original_image = cv2.imread(state["image_path"])
+                if original_image is None:
+                    raise ValueError(f"无法读取图像: {state['image_path']}")
 
             boxes = state["output"]
             model = state["model"]
@@ -408,9 +485,17 @@ def output_node(state: ImageState) -> ImageState:
 
             state["detection_results"] = detection_results
             state["annotated_image_path"] = output_path
-            result = f"标注结果已保存至 {output_path}, 检测到 {len(detection_results)} 个对象"
-            print(result)
-            state["result_message"] = result
+            
+            # 直接设置result_message
+            state["result_message"] = f"标注结果已保存至 {output_path}, 检测到 {len(detection_results)} 个对象"
+            print(f"设置结果消息: {state['result_message']}")
+            
+            # 作为备份，在状态集合中再添加一个副本
+            state["annotations"] = {
+                "message": state["result_message"],
+                "path": output_path,
+                "detections": detection_results
+            }
 
         elif task == "interpretation":
             result = f"图像描述：\n{output}"
@@ -428,8 +513,34 @@ def output_node(state: ImageState) -> ImageState:
                 "result": state.get("result_message", "")
             })
 
+        # 检查并打印最终结果，方便调试
+        final_message = state.get("result_message", "")
+        print(f"输出节点结束，result_message: {final_message}")
+        
+        # 最后再检查一次result_message是否存在
+        if not state.get("result_message") and "output" in state:
+            print("警告: 最终结果消息为空，使用默认消息")
+            if task == "classification":
+                state["result_message"] = f"分类结果 (ID): {output}"
+            elif task == "annotation":
+                if "annotations" in state and state["annotations"].get("message"):
+                    state["result_message"] = state["annotations"]["message"]
+                else:
+                    state["result_message"] = f"标注完成，原始结果: {len(boxes)} 个物体"
+            elif task == "interpretation":
+                state["result_message"] = f"图像描述 (截断): {str(output)[:100]}..."
+
+    except KeyError as e:
+        state["error"] = f"output_error: {str(e)}"
+        print(f"输出节点错误(键): {str(e)}")
+        # 提供一个默认的结果消息
+        state["result_message"] = "处理过程中出现错误，未能生成有效结果"
+        state["status"] = "error"
     except Exception as e:
         state["error"] = f"output_error: {str(e)}"
+        print(f"输出节点错误: {str(e)}")
+        state["result_message"] = f"处理错误: {str(e)}"
+        state["status"] = "error"
 
     return state
 
