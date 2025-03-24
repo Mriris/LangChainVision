@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通用图像分析</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .header {
+            padding: 60px 0;
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            margin-bottom: 40px;
+        }
+        .task-card {
+            height: 100%;
+            transition: transform 0.3s;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .task-card:hover {
+            transform: translateY(-5px);
+        }
+        .card-icon {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+        .upload-container {
+            padding: 30px;
+            border-radius: 10px;
+            background-color: #f8f9fa;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .footer {
+            margin-top: 60px;
+            padding: 20px 0;
+            background-color: #f8f9fa;
+        }
+        .image-preview-container {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            display: none;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            transition: transform 0.3s ease;
+        }
+        .preview-image:hover {
+            transform: scale(1.02);
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            display: none;
+        }
+        .loading-spinner {
+            width: 80px;
+            height: 80px;
+            border: 8px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 8px solid #ffffff;
+            animation: spin 1s linear infinite;
+        }
+        .loading-text {
+            color: white;
+            margin-top: 20px;
+            font-size: 1.2rem;
+        }
+        .nav-link {
+            padding: 8px 16px;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .breadcrumb-item a {
+            text-decoration: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>智能图像分析平台</h1>
+                <nav>
+                    <ul class="nav">
+                        <li class="nav-item">
+                            <a class="nav-link text-white" href="/"><i class="bi bi-house-door"></i> 首页</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white active" href="/general"><i class="bi bi-image"></i> 通用图像分析</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white" href="/remote_sensing"><i class="bi bi-globe-americas"></i> 遥感图像分析</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            <h2 class="mb-3">通用图像分析</h2>
+            <p class="lead">基于人工智能的图像分析工具，支持多种图像处理任务</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <nav style="--bs-breadcrumb-divider: '>';" aria-label="breadcrumb" class="mb-4">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">首页</a></li>
+                <li class="breadcrumb-item active" aria-current="page">通用图像分析</li>
+            </ol>
+        </nav>
+        
+        <div class="row mb-5">
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-tag-fill text-primary card-icon"></i>
+                        <h5 class="card-title">图像分类</h5>
+                        <p class="card-text">识别图像中的主要对象或类别</p>
+                        <p class="text-muted small">示例：这是什么动物？</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-bounding-box text-success card-icon"></i>
+                        <h5 class="card-title">物体检测</h5>
+                        <p class="card-text">检测并定位图像中的多个对象</p>
+                        <p class="text-muted small">示例：找出图中所有的物体</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-chat-square-text text-info card-icon"></i>
+                        <h5 class="card-title">图像描述</h5>
+                        <p class="card-text">提供图像的详细文字描述</p>
+                        <p class="text-muted small">示例：描述图片内容</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-image-alt text-warning card-icon"></i>
+                        <h5 class="card-title">图像增强</h5>
+                        <p class="card-text">提高图像质量和清晰度</p>
+                        <p class="text-muted small">示例：提高图像清晰度</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="upload-container">
+            <h3 class="mb-4 text-center">上传图像进行分析</h3>
+            
+            <form action="/upload" method="post" enctype="multipart/form-data" id="uploadForm">
+                <div class="mb-4">
+                    <label for="file" class="form-label">选择图像文件（.jpg, .jpeg, .png）</label>
+                    <input type="file" class="form-control" id="file" name="file" accept=".jpg,.jpeg,.png" required>
+                </div>
+                
+                <!-- 图片预览区域 -->
+                <div class="image-preview-container" id="imagePreviewContainer">
+                    <img id="previewImage" class="preview-image" alt="预览图片" />
+                    <div class="mt-2 text-muted small">
+                        <i class="bi bi-info-circle"></i> 您选择的图片预览
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="requirement" class="form-label">分析需求（请用中文描述您想要实现的目标）</label>
+                    <textarea class="form-control" id="requirement" name="requirement" rows="3" placeholder="例如：这是什么动物？找出图中所有的物体。请描述这张图片。提高图像质量和清晰度。" required></textarea>
+                    <div class="form-text">系统将根据您的需求自动选择最合适的分析任务</div>
+                </div>
+                
+                <div class="text-center">
+                    <button type="submit" class="btn btn-primary btn-lg" id="analyzeBtn">开始分析</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="mt-5">
+            <h4>使用说明</h4>
+            <ul class="list-group">
+                <li class="list-group-item d-flex">
+                    <span class="badge bg-primary rounded-pill me-3">1</span>
+                    <div>
+                        <strong>图像分类</strong> - 用于识别图像中主要对象或类别。输入"这是什么？"、"识别图中物体"等问题。
+                    </div>
+                </li>
+                <li class="list-group-item d-flex">
+                    <span class="badge bg-success rounded-pill me-3">2</span>
+                    <div>
+                        <strong>物体检测</strong> - 用于检测并标记图像中的多个对象。输入"找出所有物体"、"标记图中的人和动物"等问题。
+                    </div>
+                </li>
+                <li class="list-group-item d-flex">
+                    <span class="badge bg-info rounded-pill me-3">3</span>
+                    <div>
+                        <strong>图像描述</strong> - 用于生成图像的详细描述。输入"描述这张图片"、"图片中发生了什么"等问题。
+                    </div>
+                </li>
+                <li class="list-group-item d-flex">
+                    <span class="badge bg-warning rounded-pill me-3">4</span>
+                    <div>
+                        <strong>图像增强</strong> - 用于提高图像质量和清晰度。输入"提高图像质量"、"增强图像清晰度"、"使图像更加清晰"等问题。
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <footer class="footer mt-5">
+        <div class="container text-center">
+            <p class="mb-0">© 2024 智能图像分析平台 | 基于LangGraph和深度学习</p>
+        </div>
+    </footer>
+
+    <!-- 加载动画覆盖层 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在分析图像，请稍候...</div>
+        <div class="text-white mt-3 small">分析可能需要10-30秒，取决于任务复杂度</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('file');
+            const previewContainer = document.getElementById('imagePreviewContainer');
+            const previewImage = document.getElementById('previewImage');
+            const uploadForm = document.getElementById('uploadForm');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            
+            // 文件选择变更事件
+            fileInput.addEventListener('change', function() {
+                if (fileInput.files && fileInput.files[0]) {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        previewImage.src = e.target.result;
+                        previewContainer.style.display = 'block';
+                        
+                        // 添加渐入动画效果
+                        previewImage.style.opacity = 0;
+                        setTimeout(() => {
+                            previewImage.style.transition = 'opacity 0.5s ease';
+                            previewImage.style.opacity = 1;
+                        }, 50);
+                    };
+                    
+                    reader.readAsDataURL(fileInput.files[0]);
+                } else {
+                    previewContainer.style.display = 'none';
+                }
+            });
+            
+            // 表单提交事件
+            uploadForm.addEventListener('submit', function() {
+                // 验证表单
+                if (uploadForm.checkValidity()) {
+                    // 显示加载动画
+                    loadingOverlay.style.display = 'flex';
+                    
+                    // 禁用提交按钮防止重复提交
+                    document.getElementById('analyzeBtn').disabled = true;
+                    
+                    // 为防止表单提交过快闪烁，确保至少显示加载动画500ms
+                    setTimeout(() => {
+                        // 实际表单提交会正常进行，这只是确保动画显示足够长的时间
+                    }, 500);
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

@@ -14,7 +14,7 @@ app = Flask(__name__)
 app.secret_key = "langchainvision_secret_key"
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制上传文件大小为16MB
-app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
+app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'tif', 'tiff'}  # 添加遥感图像格式支持
 
 # 确保上传目录存在
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -24,8 +24,19 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 @app.route('/')
-def index():
+def home():
+    """主页，提供导航到通用图像分析或遥感图像分析"""
     return render_template('index.html')
+
+@app.route('/general')
+def general():
+    """通用图像分析页面"""
+    return render_template('general.html')
+
+@app.route('/remote_sensing')
+def remote_sensing():
+    """遥感图像分析页面"""
+    return render_template('remote_sensing.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -74,7 +85,7 @@ def upload_file():
             except Exception as ollama_err:
                 print(f"Ollama服务检测失败: {str(ollama_err)}") 
                 flash('Ollama服务未启动或不可用。请确保已启动Ollama并下载所需模型。')
-                return redirect(url_for('index'))
+                return redirect(url_for('general'))
             
             # 执行图像分析工作流
             print(f"开始处理图像: {file_path}, 需求: {requirement}")
@@ -275,7 +286,7 @@ def upload_file():
                 cleanup_resources()
                 print("出错后已释放模型和GPU资源")
                 
-                return redirect(url_for('index'))
+                return redirect(url_for('general'))
         except Exception as e:
             print(f"处理异常：{str(e)}")
             flash(f'处理过程中出错: {str(e)}')
@@ -287,10 +298,50 @@ def upload_file():
             except Exception as cleanup_err:
                 print(f"释放资源时出错: {str(cleanup_err)}")
                 
-            return redirect(url_for('index'))
+            return redirect(url_for('general'))
     
     flash('不支持的文件类型')
-    return redirect(url_for('index'))
+    return redirect(url_for('general'))
+
+# 添加处理遥感图像分析的路由
+@app.route('/rs_upload', methods=['POST'])
+def rs_upload_file():
+    """处理遥感图像上传和分析"""
+    # 检查是否有文件和需求
+    if 'file' not in request.files:
+        flash('没有选择文件')
+        return redirect(url_for('remote_sensing'))
+    
+    file = request.files['file']
+    task_type = request.form.get('task_type', '')
+    
+    if file.filename == '':
+        flash('没有选择文件')
+        return redirect(url_for('remote_sensing'))
+    
+    if not task_type:
+        flash('请选择任务类型')
+        return redirect(url_for('remote_sensing'))
+    
+    if file and allowed_file(file.filename):
+        # 保存上传的文件
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        
+        # TODO: 实现遥感图像分析工作流
+        # 临时使用一个简单的结果返回
+        result = {
+            "task": task_type,
+            "status": "completed",
+            "message": f"遥感图像分析任务 {task_type} 已提交，即将实现具体功能",
+            "is_remote_sensing": True
+        }
+        
+        return render_template('rs_result.html', result=result, filename=filename)
+    
+    flash('不支持的文件类型')
+    return redirect(url_for('remote_sensing'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

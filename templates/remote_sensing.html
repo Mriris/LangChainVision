@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>遥感图像分析</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .header {
+            padding: 60px 0;
+            background: linear-gradient(135deg, #0a8270 0%, #2c87d1 100%);
+            color: white;
+            margin-bottom: 40px;
+        }
+        .task-card {
+            height: 100%;
+            transition: transform 0.3s;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .task-card:hover {
+            transform: translateY(-5px);
+        }
+        .card-icon {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+        .upload-container {
+            padding: 30px;
+            border-radius: 10px;
+            background-color: #f8f9fa;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .footer {
+            margin-top: 60px;
+            padding: 20px 0;
+            background-color: #f8f9fa;
+        }
+        .image-preview-container {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            display: none;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            transition: transform 0.3s ease;
+        }
+        .preview-image:hover {
+            transform: scale(1.02);
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            display: none;
+        }
+        .loading-spinner {
+            width: 80px;
+            height: 80px;
+            border: 8px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 8px solid #ffffff;
+            animation: spin 1s linear infinite;
+        }
+        .loading-text {
+            color: white;
+            margin-top: 20px;
+            font-size: 1.2rem;
+        }
+        .nav-link {
+            padding: 8px 16px;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .breadcrumb-item a {
+            text-decoration: none;
+        }
+        .model-info {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .model-badge {
+            font-size: 0.75rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>智能图像分析平台</h1>
+                <nav>
+                    <ul class="nav">
+                        <li class="nav-item">
+                            <a class="nav-link text-white" href="/"><i class="bi bi-house-door"></i> 首页</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white" href="/general"><i class="bi bi-image"></i> 通用图像分析</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white active" href="/remote_sensing"><i class="bi bi-globe-americas"></i> 遥感图像分析</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            <h2 class="mb-3">遥感图像分析</h2>
+            <p class="lead">专业的卫星和航空遥感图像分析工具，支持多种遥感分析任务</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <nav style="--bs-breadcrumb-divider: '>';" aria-label="breadcrumb" class="mb-4">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">首页</a></li>
+                <li class="breadcrumb-item active" aria-current="page">遥感图像分析</li>
+            </ol>
+        </nav>
+        
+        <div class="row mb-5">
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-map text-success card-icon"></i>
+                        <h5 class="card-title">地物分类</h5>
+                        <p class="card-text">识别和分类遥感图像中的地物类型</p>
+                        <p class="text-muted small">示例：土地覆盖分类</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-arrows-angle-contract text-danger card-icon"></i>
+                        <h5 class="card-title">变化检测</h5>
+                        <p class="card-text">检测多时相遥感图像中的地表变化</p>
+                        <p class="text-muted small">示例：森林砍伐、城市扩张</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-buildings text-primary card-icon"></i>
+                        <h5 class="card-title">目标识别</h5>
+                        <p class="card-text">检测和定位遥感图像中的特定目标</p>
+                        <p class="text-muted small">示例：建筑物、道路、车辆</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-4">
+                <div class="card task-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-grid-3x3 text-warning card-icon"></i>
+                        <h5 class="card-title">图像分割</h5>
+                        <p class="card-text">对遥感图像进行像素级分割和标注</p>
+                        <p class="text-muted small">示例：地物边界提取</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="upload-container">
+            <h3 class="mb-4 text-center">上传遥感图像进行分析</h3>
+            
+            <form action="/rs_upload" method="post" enctype="multipart/form-data" id="uploadForm">
+                <div class="mb-4">
+                    <label for="file" class="form-label">选择遥感图像文件（.tif, .tiff, .jpg, .jpeg, .png）</label>
+                    <input type="file" class="form-control" id="file" name="file" accept=".tif,.tiff,.jpg,.jpeg,.png" required>
+                </div>
+                
+                <!-- 图片预览区域 -->
+                <div class="image-preview-container" id="imagePreviewContainer">
+                    <img id="previewImage" class="preview-image" alt="预览图片" />
+                    <div class="mt-2 text-muted small">
+                        <i class="bi bi-info-circle"></i> 您选择的图片预览
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="task_type" class="form-label">选择分析任务类型</label>
+                    <select class="form-select" id="task_type" name="task_type" required>
+                        <option value="" selected disabled>请选择任务类型</option>
+                        <option value="land_cover">地物分类（土地覆盖分类）</option>
+                        <option value="change_detection">变化检测</option>
+                        <option value="object_detection">目标识别</option>
+                        <option value="segmentation">图像分割</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="model_selection" class="form-label">选择模型（可选）</label>
+                    <select class="form-select" id="model_selection" name="model_selection">
+                        <option value="auto" selected>自动选择最佳模型</option>
+                        <option value="swin-t">Swin Transformer (高精度)</option>
+                        <option value="segformer">SegFormer (GPU优化)</option>
+                        <option value="sam-hq">SAM-HQ (超高精度分割)</option>
+                    </select>
+                    <div class="form-text">系统将根据您的选择使用相应的模型进行分析</div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="additional_params" class="form-label">高级参数（可选）</label>
+                    <textarea class="form-control" id="additional_params" name="additional_params" rows="2" placeholder="例如：分类阈值=0.5, 检测置信度=0.6, 分割精度=高"></textarea>
+                </div>
+                
+                <div class="text-center">
+                    <button type="submit" class="btn btn-success btn-lg" id="analyzeBtn">开始分析</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="mt-5">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">支持的模型与GPU加速</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <h5><i class="bi bi-map text-success me-2"></i>地物分类模型</h5>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>Swin Transformer</strong>
+                                        <div class="model-info">适用于高精度土地覆盖分类，支持12类地物</div>
+                                    </div>
+                                    <span class="badge bg-primary model-badge">GPU优化</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>SpectralFormer</strong>
+                                        <div class="model-info">专为多光谱遥感图像设计，高效处理光谱信息</div>
+                                    </div>
+                                    <span class="badge bg-success model-badge">低资源</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <h5><i class="bi bi-arrows-angle-contract text-danger me-2"></i>变化检测模型</h5>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>BiT-CD</strong>
+                                        <div class="model-info">双时相变化检测专用模型，高精度检测地表变化</div>
+                                    </div>
+                                    <span class="badge bg-primary model-badge">GPU优化</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>ChangeFormer</strong>
+                                        <div class="model-info">使用Transformer架构，适用于复杂场景变化</div>
+                                    </div>
+                                    <span class="badge bg-warning model-badge">高内存</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6 mb-3">
+                            <h5><i class="bi bi-buildings text-primary me-2"></i>目标识别模型</h5>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>DINO-v2</strong>
+                                        <div class="model-info">自监督学习模型，适用于大规模遥感目标识别</div>
+                                    </div>
+                                    <span class="badge bg-primary model-badge">GPU优化</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>YOLOv8-RS</strong>
+                                        <div class="model-info">针对遥感图像优化的YOLOv8版本，快速检测</div>
+                                    </div>
+                                    <span class="badge bg-success model-badge">低资源</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <h5><i class="bi bi-grid-3x3 text-warning me-2"></i>图像分割模型</h5>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>SAM-HQ</strong>
+                                        <div class="model-info">高质量分割模型，支持遥感图像精细分割</div>
+                                    </div>
+                                    <span class="badge bg-warning model-badge">高内存</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>SegFormer</strong>
+                                        <div class="model-info">轻量级分割模型，适用于各类遥感场景</div>
+                                    </div>
+                                    <span class="badge bg-primary model-badge">GPU优化</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer text-muted">
+                    所有模型均支持GPU加速，推荐使用NVIDIA RTX系列GPU以获得最佳性能
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-5">
+        <div class="container text-center">
+            <p class="mb-0">© 2024 智能图像分析平台 | 基于LangGraph和深度学习</p>
+        </div>
+    </footer>
+
+    <!-- 加载动画覆盖层 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在分析遥感图像，请稍候...</div>
+        <div class="text-white mt-3 small">遥感分析任务可能需要1-3分钟，取决于图像大小和任务类型</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('file');
+            const previewContainer = document.getElementById('imagePreviewContainer');
+            const previewImage = document.getElementById('previewImage');
+            const uploadForm = document.getElementById('uploadForm');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const taskType = document.getElementById('task_type');
+            const modelSelection = document.getElementById('model_selection');
+            
+            // 文件选择变更事件
+            fileInput.addEventListener('change', function() {
+                if (fileInput.files && fileInput.files[0]) {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        previewImage.src = e.target.result;
+                        previewContainer.style.display = 'block';
+                        
+                        // 添加渐入动画效果
+                        previewImage.style.opacity = 0;
+                        setTimeout(() => {
+                            previewImage.style.transition = 'opacity 0.5s ease';
+                            previewImage.style.opacity = 1;
+                        }, 50);
+                    };
+                    
+                    reader.readAsDataURL(fileInput.files[0]);
+                } else {
+                    previewContainer.style.display = 'none';
+                }
+            });
+            
+            // 任务类型变更时更新模型选择
+            taskType.addEventListener('change', function() {
+                const selectedTask = taskType.value;
+                
+                // 清空当前选项
+                modelSelection.innerHTML = '<option value="auto" selected>自动选择最佳模型</option>';
+                
+                // 根据任务类型添加对应模型
+                if (selectedTask === 'land_cover') {
+                    modelSelection.innerHTML += '<option value="swin-t">Swin Transformer (高精度)</option>';
+                    modelSelection.innerHTML += '<option value="spectralformer">SpectralFormer (多光谱专用)</option>';
+                } else if (selectedTask === 'change_detection') {
+                    modelSelection.innerHTML += '<option value="bit-cd">BiT-CD (双时相专用)</option>';
+                    modelSelection.innerHTML += '<option value="changeformer">ChangeFormer (复杂场景)</option>';
+                } else if (selectedTask === 'object_detection') {
+                    modelSelection.innerHTML += '<option value="dino-v2">DINO-v2 (高精度)</option>';
+                    modelSelection.innerHTML += '<option value="yolov8-rs">YOLOv8-RS (快速检测)</option>';
+                } else if (selectedTask === 'segmentation') {
+                    modelSelection.innerHTML += '<option value="sam-hq">SAM-HQ (超高精度)</option>';
+                    modelSelection.innerHTML += '<option value="segformer">SegFormer (轻量级)</option>';
+                }
+            });
+            
+            // 表单提交事件
+            uploadForm.addEventListener('submit', function() {
+                // 验证表单
+                if (uploadForm.checkValidity()) {
+                    // 显示加载动画
+                    loadingOverlay.style.display = 'flex';
+                    
+                    // 禁用提交按钮防止重复提交
+                    document.getElementById('analyzeBtn').disabled = true;
+                    
+                    // 为防止表单提交过快闪烁，确保至少显示加载动画500ms
+                    setTimeout(() => {
+                        // 实际表单提交会正常进行，这只是确保动画显示足够长的时间
+                    }, 500);
+                }
+            });
+        });
+    </script>
+</body>
+</html> 
