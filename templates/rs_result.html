@@ -79,6 +79,30 @@
             border-radius: 3px;
             margin-right: 8px;
         }
+        /* 添加目标检测相关样式 */
+        .confidence-bar {
+            height: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+        .confidence-value {
+            height: 100%;
+            background-color: #28a745;
+            border-radius: 5px;
+        }
+        .rs-result-image {
+            max-width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stats-container {
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
         @media (min-width: 768px) {
             .comparison-container {
                 flex-direction: row;
@@ -180,113 +204,151 @@
                             </div>
                         {% endif %}
                         
-                        <!-- 地物分类结果 -->
                         {% if result.task == 'land_cover' %}
+                            <!-- 地物分类结果 -->
                             <div class="row">
-                                <div class="col-md-6">
-                                    <h5>原始图像</h5>
-                                    <img src="data:image/jpeg;base64,{{ result.original_image }}" alt="原始图像" class="img-fluid rs-result-image">
-                                </div>
-                                <div class="col-md-6">
-                                    <h5>分类结果</h5>
-                                    <img src="data:image/jpeg;base64,{{ result.classified_image }}" alt="分类结果" class="img-fluid rs-result-image">
-                                    <div class="color-legend mt-3">
-                                        {% for class_id, class_name in result.classes.items() %}
-                                            <div class="legend-item">
-                                                {% if class_id == 0 %}<div class="legend-color" style="background-color: #006400;"></div>{% endif %}
-                                                {% if class_id == 1 %}<div class="legend-color" style="background-color: #7cfc00;"></div>{% endif %}
-                                                {% if class_id == 2 %}<div class="legend-color" style="background-color: #98fb98;"></div>{% endif %}
-                                                {% if class_id == 3 %}<div class="legend-color" style="background-color: #8b4513;"></div>{% endif %}
-                                                {% if class_id == 4 %}<div class="legend-color" style="background-color: #0000ff;"></div>{% endif %}
-                                                {% if class_id == 5 %}<div class="legend-color" style="background-color: #808080;"></div>{% endif %}
-                                                {% if class_id == 6 %}<div class="legend-color" style="background-color: #ffff00;"></div>{% endif %}
-                                                {{ class_name }}
-                                            </div>
-                                        {% endfor %}
-                                    </div>
+                                <div class="col-md-12">
+                                    <h5>地物分类结果</h5>
+                                    {% if result.status == "error" %}
+                                        <div class="alert alert-danger">
+                                            {{ result.message }}
+                                        </div>
+                                    {% else %}
+                                        <img src="data:image/jpeg;base64,{{ result.classified_image }}" alt="分类结果" class="img-fluid rs-result-image">
+                                    {% endif %}
                                 </div>
                             </div>
                             
+                            {% if result.status != "error" and result.comparison_image %}
                             <div class="row mt-4">
                                 <div class="col-md-12">
-                                    <h5>分类统计</h5>
-                                    <div class="table-responsive">
-                                        <table class="table table-striped table-sm stats-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>类别</th>
-                                                    <th>像素数</th>
-                                                    <th>面积 (km²)</th>
-                                                    <th>百分比</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for class_id, stat in result.stats.items() %}
-                                                <tr>
-                                                    <td>{{ result.classes[class_id] }}</td>
-                                                    <td>{{ "{:,}".format(stat.pixels) }}</td>
-                                                    <td>{{ stat.area_km2 }}</td>
-                                                    <td>{{ stat.percentage }}%</td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    <h5>对比图</h5>
+                                    <img src="data:image/jpeg;base64,{{ result.comparison_image }}" alt="对比图" class="img-fluid rs-result-image">
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            <div class="row mt-4">
+                                <div class="col-md-8">
+                                    <h5>地物类别分布</h5>
+                                    {% if result.status != "error" and result.stats %}
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-sm stats-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>类别</th>
+                                                        <th>面积 (km²)</th>
+                                                        <th>占比</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for class_id, stats in result.stats.items() %}
+                                                    <tr>
+                                                        <td>
+                                                            <span style="background-color: rgb(
+                                                                {% if class_id|string in result.classes %}
+                                                                    {% set class_id_str = class_id|string %}
+                                                                {% else %}
+                                                                    {% set class_id_str = '0' %}
+                                                                {% endif %}
+                                                            )"></span>
+                                                            {{ result.classes[class_id_str] if class_id_str in result.classes else '未知' }}
+                                                        </td>
+                                                        <td>{{ stats.area_km2 }} km²</td>
+                                                        <td>{{ stats.percentage }}%</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-info">
+                                            无可用的统计数据。
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <h5>模型信息</h5>
+                                    <p><strong>模型：</strong>{{ result.model }}</p>
+                                    <p><strong>精度：</strong>{{ result.accuracy }}%</p>
+                                    <p><strong>类别数量：</strong>{{ result.class_count }}</p>
                                 </div>
                             </div>
                             
-                        <!-- 变化检测结果 -->
                         {% elif result.task == 'change_detection' %}
+                            <!-- 变化检测结果 -->
                             <div class="row">
                                 <div class="col-md-12">
                                     <h5>变化检测结果</h5>
-                                    <img src="data:image/jpeg;base64,{{ result.change_image }}" alt="变化检测结果" class="img-fluid rs-result-image">
-                                    <div class="color-legend mt-3">
-                                        {% for change_id, change_name in result.change_types.items() %}
-                                            <div class="legend-item">
-                                                {% if change_id == 0 %}<div class="legend-color" style="background-color: #ffffff;"></div>{% endif %}
-                                                {% if change_id == 1 %}<div class="legend-color" style="background-color: #ff0000;"></div>{% endif %}
-                                                {% if change_id == 2 %}<div class="legend-color" style="background-color: #ffa500;"></div>{% endif %}
-                                                {% if change_id == 3 %}<div class="legend-color" style="background-color: #ffff00;"></div>{% endif %}
-                                                {% if change_id == 4 %}<div class="legend-color" style="background-color: #00ff00;"></div>{% endif %}
-                                                {% if change_id == 5 %}<div class="legend-color" style="background-color: #0000ff;"></div>{% endif %}
-                                                {{ change_name }}
-                                            </div>
-                                        {% endfor %}
-                                    </div>
+                                    {% if result.status == "error" %}
+                                        <div class="alert alert-danger">
+                                            {{ result.message }}
+                                        </div>
+                                    {% else %}
+                                        <img src="data:image/jpeg;base64,{{ result.change_image }}" alt="变化检测" class="img-fluid rs-result-image">
+                                    {% endif %}
                                 </div>
                             </div>
                             
+                            {% if result.status != "error" and result.comparison_image %}
                             <div class="row mt-4">
                                 <div class="col-md-12">
-                                    <h5>变化统计</h5>
-                                    <div class="table-responsive">
-                                        <table class="table table-striped table-sm stats-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>变化类型</th>
-                                                    <th>像素数</th>
-                                                    <th>面积 (km²)</th>
-                                                    <th>百分比</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for change_id, stat in result.stats.items() %}
-                                                <tr>
-                                                    <td>{{ result.change_types[change_id] }}</td>
-                                                    <td>{{ "{:,}".format(stat.pixels) }}</td>
-                                                    <td>{{ stat.area_km2 }}</td>
-                                                    <td>{{ stat.percentage }}%</td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    <h5>对比图</h5>
+                                    <img src="data:image/jpeg;base64,{{ result.comparison_image }}" alt="对比图" class="img-fluid rs-result-image">
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            <div class="row mt-4">
+                                <div class="col-md-8">
+                                    <h5>变化类型统计</h5>
+                                    {% if result.status != "error" and result.stats %}
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-sm stats-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>变化类型</th>
+                                                        <th>面积 (km²)</th>
+                                                        <th>占比</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for change_id, stats in result.stats.items() %}
+                                                    <tr>
+                                                        <td>
+                                                            <span style="background-color: rgb(
+                                                                {% if change_id|string in result.change_types %}
+                                                                    {% set change_id_str = change_id|string %}
+                                                                {% else %}
+                                                                    {% set change_id_str = '0' %}
+                                                                {% endif %}
+                                                            )"></span>
+                                                            {{ result.change_types[change_id_str] if change_id_str in result.change_types else '未知' }}
+                                                        </td>
+                                                        <td>{{ stats.area_km2 }} km²</td>
+                                                        <td>{{ stats.percentage }}%</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-info">
+                                            无可用的统计数据。
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <h5>模型信息</h5>
+                                    <p><strong>模型：</strong>{{ result.model }}</p>
+                                    <p><strong>精度：</strong>{{ result.accuracy }}%</p>
                                 </div>
                             </div>
                             
-                        <!-- 目标检测结果 -->
                         {% elif result.task == 'object_detection' %}
+                            <!-- 目标检测结果 -->
                             <div class="row">
                                 <div class="col-md-12">
                                     <h5>目标检测结果</h5>
@@ -373,8 +435,8 @@
                                 </div>
                             </div>
                             
-                        <!-- 图像分割结果 -->
                         {% elif result.task == 'segmentation' %}
+                            <!-- 图像分割结果 -->
                             <div class="row">
                                 <div class="col-md-6">
                                     <h5>原始图像</h5>

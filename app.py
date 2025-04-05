@@ -356,11 +356,17 @@ def rs_upload_file():
                     file_path, 
                     model_name=model_selection if model_selection != 'auto' else 'swin-t'
                 )
-                if "error" in analysis_result:
+                if isinstance(analysis_result, dict) and "error" in analysis_result:
                     raise Exception(analysis_result["error"])
                 
                 result.update(analysis_result)
-                result["message"] = f"地物分类分析完成，共识别出{analysis_result.get('class_count', 7)}种地物类型。"
+                # 确保classes存在
+                if "classes" not in result:
+                    result["classes"] = {
+                        0: "森林", 1: "灌木", 2: "草地", 3: "裸地", 
+                        4: "水体", 5: "建筑", 6: "农田"
+                    }
+                result["message"] = f"地物分类分析完成，共识别出{result.get('class_count', 7)}种地物类型。"
             
             # 变化检测
             elif task_type == 'change_detection':
@@ -375,13 +381,18 @@ def rs_upload_file():
                 
                 analysis_result = change_detection(
                     file_path, 
-                    reference_path=ref_path,
-                    model_name=model_selection if model_selection != 'auto' else 'bit-cd'
+                    reference_path=ref_path
                 )
-                if "error" in analysis_result:
+                if isinstance(analysis_result, dict) and "error" in analysis_result:
                     raise Exception(analysis_result["error"])
                 
                 result.update(analysis_result)
+                # 确保change_types存在
+                if "change_types" not in result:
+                    result["change_types"] = {
+                        0: "无变化", 1: "轻微变化", 2: "中等变化", 
+                        3: "强烈变化", 4: "水域扩张", 5: "植被增加"
+                    }
                 result["message"] = "变化检测分析完成，已识别出多种地表变化类型。"
             
             # 目标识别
@@ -403,32 +414,42 @@ def rs_upload_file():
                     model_name=model_selection if model_selection != 'auto' else 'yolov8-rs',
                     conf_thresh=conf_thresh
                 )
-                if "error" in analysis_result:
+                if isinstance(analysis_result, dict) and "error" in analysis_result:
                     raise Exception(analysis_result["error"])
                 
                 result.update(analysis_result)
                 result["confidence_threshold"] = conf_thresh  # 添加置信度阈值到结果
-                result["message"] = f"目标检测分析完成，共检测到{len(analysis_result.get('detections', []))}个目标。"
+                # 确保class_counts存在
+                if "class_counts" not in result:
+                    result["class_counts"] = {}
+                    for det in result.get("detections", []):
+                        cls = det.get("class", "未知")
+                        if cls in result["class_counts"]:
+                            result["class_counts"][cls] += 1
+                        else:
+                            result["class_counts"][cls] = 1
+                
+                result["message"] = f"目标检测分析完成，共检测到{len(result.get('detections', []))}个目标。"
             
             # 图像分割
             elif task_type == 'segmentation':
                 # 解析附加参数（如分割精度）
-                n_segments = 100  # 默认值
+                precision = "medium"  # 默认值
                 if additional_params:
                     params = {p.split('=')[0].strip(): p.split('=')[1].strip() 
                               for p in additional_params.split(',') if '=' in p}
                     if '分割精度' in params:
                         if params['分割精度'] == '高':
-                            n_segments = 200
+                            precision = "high"
                         elif params['分割精度'] == '低':
-                            n_segments = 50
+                            precision = "low"
                 
                 analysis_result = image_segmentation(
                     file_path, 
-                    model_name=model_selection if model_selection != 'auto' else 'segformer',
-                    n_segments=n_segments
+                    precision=precision,
+                    model_name=model_selection if model_selection != 'auto' else 'unet'
                 )
-                if "error" in analysis_result:
+                if isinstance(analysis_result, dict) and "error" in analysis_result:
                     raise Exception(analysis_result["error"])
                 
                 result.update(analysis_result)
@@ -444,6 +465,15 @@ def rs_upload_file():
             result["status"] = "error"
             result["error"] = str(e)
             result["message"] = f"分析过程中出错: {str(e)}"
+            
+            # 确保classes或其他必要字段存在，避免模板渲染错误
+            if "classes" not in result and task_type == 'land_cover':
+                result["classes"] = {0: "未知"}
+            if "change_types" not in result and task_type == 'change_detection':
+                result["change_types"] = {0: "无变化"}
+            if "class_counts" not in result and task_type == 'object_detection':
+                result["class_counts"] = {}
+            
             flash(f'处理过程中出错: {str(e)}')
         
         return render_template('rs_result.html', result=result, filename=filename)
