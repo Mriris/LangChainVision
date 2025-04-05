@@ -103,6 +103,86 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        /* 添加参考图像预览区域样式 */
+        .reference-image-container {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            display: none;
+            border: 1px dashed #ccc;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        
+        /* 添加时间轴选择样式 */
+        .timeline-selector {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .timeline-selector .line {
+            flex-grow: 1;
+            height: 2px;
+            background-color: #dee2e6;
+            position: relative;
+        }
+        
+        .timeline-selector .point {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #2c87d1;
+            position: absolute;
+            top: -7px;
+            cursor: pointer;
+        }
+        
+        .timeline-selector .point.start {
+            left: 0;
+        }
+        
+        .timeline-selector .point.end {
+            right: 0;
+        }
+        
+        .timeline-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+            text-align: center;
+            width: 80px;
+        }
+        
+        /* 高级参数表单样式 */
+        .advanced-params {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .param-slider {
+            margin-bottom: 15px;
+        }
+        
+        /* 任务详情卡片悬停效果增强 */
+        .task-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+        }
+        
+        /* 任务徽章 */
+        .task-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 0.7rem;
+            padding: 3px 8px;
+        }
     </style>
 </head>
 <body>
@@ -139,7 +219,8 @@
         
         <div class="row mb-5">
             <div class="col-md-3 mb-4">
-                <div class="card task-card">
+                <div class="card task-card position-relative">
+                    <span class="badge bg-success task-badge">热门</span>
                     <div class="card-body text-center">
                         <i class="bi bi-map text-success card-icon"></i>
                         <h5 class="card-title">地物分类</h5>
@@ -149,7 +230,8 @@
                 </div>
             </div>
             <div class="col-md-3 mb-4">
-                <div class="card task-card">
+                <div class="card task-card position-relative">
+                    <span class="badge bg-primary task-badge">高级</span>
                     <div class="card-body text-center">
                         <i class="bi bi-arrows-angle-contract text-danger card-icon"></i>
                         <h5 class="card-title">变化检测</h5>
@@ -170,6 +252,7 @@
             </div>
             <div class="col-md-3 mb-4">
                 <div class="card task-card">
+                    <span class="badge bg-warning task-badge">精准</span>
                     <div class="card-body text-center">
                         <i class="bi bi-grid-3x3 text-warning card-icon"></i>
                         <h5 class="card-title">图像分割</h5>
@@ -197,6 +280,28 @@
                     </div>
                 </div>
                 
+                <!-- 参考图像区域（用于变化检测） -->
+                <div class="reference-image-container" id="referenceImageContainer">
+                    <div class="mb-3">
+                        <label for="reference_file" class="form-label">选择参考图像（用于变化检测）</label>
+                        <input type="file" class="form-control" id="reference_file" name="reference_file" accept=".tif,.tiff,.jpg,.jpeg,.png">
+                    </div>
+                    <img id="referencePreviewImage" class="preview-image" alt="参考图像预览" style="display: none;" />
+                    <div class="mt-2 text-muted small" id="referenceImageCaption" style="display: none;">
+                        <i class="bi bi-info-circle"></i> 参考图像预览
+                    </div>
+                    
+                    <!-- 时间轴选择器 -->
+                    <div class="timeline-selector mt-4" id="timelineSelector">
+                        <div class="timeline-label">起始时间</div>
+                        <div class="line">
+                            <div class="point start"></div>
+                            <div class="point end"></div>
+                        </div>
+                        <div class="timeline-label">当前时间</div>
+                    </div>
+                </div>
+                
                 <div class="mb-4">
                     <label for="task_type" class="form-label">选择分析任务类型</label>
                     <select class="form-select" id="task_type" name="task_type" required>
@@ -219,9 +324,63 @@
                     <div class="form-text">系统将根据您的选择使用相应的模型进行分析</div>
                 </div>
                 
+                <!-- 高级参数区域 -->
                 <div class="mb-4">
-                    <label for="additional_params" class="form-label">高级参数（可选）</label>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label for="additional_params" class="form-label mb-0">高级参数（可选）</label>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="showAdvancedBtn">显示高级参数</button>
+                    </div>
                     <textarea class="form-control" id="additional_params" name="additional_params" rows="2" placeholder="例如：分类阈值=0.5, 检测置信度=0.6, 分割精度=高"></textarea>
+                    
+                    <!-- 高级参数表单 -->
+                    <div class="advanced-params" id="advancedParamsForm">
+                        <!-- 参数表单内容将根据任务类型动态生成 -->
+                        <div class="task-params" id="landCoverParams">
+                            <div class="mb-3">
+                                <label for="classCount" class="form-label">分类数量</label>
+                                <input type="range" class="form-range" id="classCount" min="3" max="12" value="7">
+                                <div class="d-flex justify-content-between">
+                                    <span>较少 (3)</span>
+                                    <span id="classCountValue">7</span>
+                                    <span>较多 (12)</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="task-params" id="objectDetectionParams" style="display: none;">
+                            <div class="mb-3">
+                                <label for="confThreshold" class="form-label">检测置信度阈值</label>
+                                <input type="range" class="form-range" id="confThreshold" min="0.1" max="0.9" step="0.1" value="0.5">
+                                <div class="d-flex justify-content-between">
+                                    <span>较低 (0.1)</span>
+                                    <span id="confThresholdValue">0.5</span>
+                                    <span>较高 (0.9)</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="task-params" id="segmentationParams" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">分割精度</label>
+                                <div class="d-flex">
+                                    <div class="form-check me-4">
+                                        <input class="form-check-input" type="radio" name="segmentationPrecision" id="precisionLow" value="低">
+                                        <label class="form-check-label" for="precisionLow">低</label>
+                                    </div>
+                                    <div class="form-check me-4">
+                                        <input class="form-check-input" type="radio" name="segmentationPrecision" id="precisionMedium" value="中" checked>
+                                        <label class="form-check-label" for="precisionMedium">中</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="segmentationPrecision" id="precisionHigh" value="高">
+                                        <label class="form-check-label" for="precisionHigh">高</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button type="button" class="btn btn-sm btn-success" id="applyParamsBtn">应用参数</button>
+                    </div>
                 </div>
                 
                 <div class="text-center">
@@ -326,7 +485,7 @@
 
     <footer class="footer mt-5">
         <div class="container text-center">
-            <p class="mb-0">© 2024 智能图像分析平台 | 基于LangGraph和深度学习</p>
+            <p class="mb-0">© 2024 智能图像分析平台 | 基于开源遥感处理库和深度学习</p>
         </div>
     </footer>
 
@@ -348,6 +507,22 @@
             const loadingOverlay = document.getElementById('loadingOverlay');
             const taskType = document.getElementById('task_type');
             const modelSelection = document.getElementById('model_selection');
+            const referenceImageContainer = document.getElementById('referenceImageContainer');
+            const referenceFileInput = document.getElementById('reference_file');
+            const referencePreviewImage = document.getElementById('referencePreviewImage');
+            const referenceImageCaption = document.getElementById('referenceImageCaption');
+            const timelineSelector = document.getElementById('timelineSelector');
+            const showAdvancedBtn = document.getElementById('showAdvancedBtn');
+            const advancedParamsForm = document.getElementById('advancedParamsForm');
+            const applyParamsBtn = document.getElementById('applyParamsBtn');
+            const additionalParamsField = document.getElementById('additional_params');
+            
+            // 高级参数控件
+            const classCount = document.getElementById('classCount');
+            const classCountValue = document.getElementById('classCountValue');
+            const confThreshold = document.getElementById('confThreshold');
+            const confThresholdValue = document.getElementById('confThresholdValue');
+            const taskParamsDivs = document.querySelectorAll('.task-params');
             
             // 文件选择变更事件
             fileInput.addEventListener('change', function() {
@@ -372,6 +547,33 @@
                 }
             });
             
+            // 参考图像变更事件
+            referenceFileInput.addEventListener('change', function() {
+                if (referenceFileInput.files && referenceFileInput.files[0]) {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        referencePreviewImage.src = e.target.result;
+                        referencePreviewImage.style.display = 'block';
+                        referenceImageCaption.style.display = 'block';
+                        timelineSelector.style.display = 'flex';
+                        
+                        // 添加渐入动画效果
+                        referencePreviewImage.style.opacity = 0;
+                        setTimeout(() => {
+                            referencePreviewImage.style.transition = 'opacity 0.5s ease';
+                            referencePreviewImage.style.opacity = 1;
+                        }, 50);
+                    };
+                    
+                    reader.readAsDataURL(referenceFileInput.files[0]);
+                } else {
+                    referencePreviewImage.style.display = 'none';
+                    referenceImageCaption.style.display = 'none';
+                    timelineSelector.style.display = 'none';
+                }
+            });
+            
             // 任务类型变更时更新模型选择
             taskType.addEventListener('change', function() {
                 const selectedTask = taskType.value;
@@ -383,22 +585,99 @@
                 if (selectedTask === 'land_cover') {
                     modelSelection.innerHTML += '<option value="swin-t">Swin Transformer (高精度)</option>';
                     modelSelection.innerHTML += '<option value="spectralformer">SpectralFormer (多光谱专用)</option>';
+                    // 隐藏参考图像区域
+                    referenceImageContainer.style.display = 'none';
                 } else if (selectedTask === 'change_detection') {
                     modelSelection.innerHTML += '<option value="bit-cd">BiT-CD (双时相专用)</option>';
                     modelSelection.innerHTML += '<option value="changeformer">ChangeFormer (复杂场景)</option>';
+                    // 显示参考图像区域
+                    referenceImageContainer.style.display = 'block';
                 } else if (selectedTask === 'object_detection') {
                     modelSelection.innerHTML += '<option value="dino-v2">DINO-v2 (高精度)</option>';
                     modelSelection.innerHTML += '<option value="yolov8-rs">YOLOv8-RS (快速检测)</option>';
+                    // 隐藏参考图像区域
+                    referenceImageContainer.style.display = 'none';
                 } else if (selectedTask === 'segmentation') {
                     modelSelection.innerHTML += '<option value="sam-hq">SAM-HQ (超高精度)</option>';
                     modelSelection.innerHTML += '<option value="segformer">SegFormer (轻量级)</option>';
+                    // 隐藏参考图像区域
+                    referenceImageContainer.style.display = 'none';
                 }
+                
+                // 更新高级参数表单
+                updateAdvancedParamsForm(selectedTask);
+            });
+            
+            // 显示/隐藏高级参数表单
+            showAdvancedBtn.addEventListener('click', function() {
+                if (advancedParamsForm.style.display === 'block') {
+                    advancedParamsForm.style.display = 'none';
+                    showAdvancedBtn.textContent = '显示高级参数';
+                } else {
+                    advancedParamsForm.style.display = 'block';
+                    showAdvancedBtn.textContent = '隐藏高级参数';
+                    // 更新当前任务类型的参数表单
+                    updateAdvancedParamsForm(taskType.value);
+                }
+            });
+            
+            // 更新高级参数表单
+            function updateAdvancedParamsForm(task) {
+                // 隐藏所有任务参数
+                taskParamsDivs.forEach(div => {
+                    div.style.display = 'none';
+                });
+                
+                // 显示当前任务参数
+                if (task === 'land_cover') {
+                    document.getElementById('landCoverParams').style.display = 'block';
+                } else if (task === 'object_detection') {
+                    document.getElementById('objectDetectionParams').style.display = 'block';
+                } else if (task === 'segmentation') {
+                    document.getElementById('segmentationParams').style.display = 'block';
+                }
+            }
+            
+            // 监听高级参数变化
+            classCount.addEventListener('input', function() {
+                classCountValue.textContent = this.value;
+            });
+            
+            confThreshold.addEventListener('input', function() {
+                confThresholdValue.textContent = this.value;
+            });
+            
+            // 应用高级参数到文本输入框
+            applyParamsBtn.addEventListener('click', function() {
+                let params = [];
+                
+                if (taskType.value === 'land_cover') {
+                    params.push(`分类数量=${classCount.value}`);
+                } else if (taskType.value === 'object_detection') {
+                    params.push(`检测置信度=${confThreshold.value}`);
+                } else if (taskType.value === 'segmentation') {
+                    const precision = document.querySelector('input[name="segmentationPrecision"]:checked').value;
+                    params.push(`分割精度=${precision}`);
+                }
+                
+                additionalParamsField.value = params.join(', ');
+                advancedParamsForm.style.display = 'none';
+                showAdvancedBtn.textContent = '显示高级参数';
             });
             
             // 表单提交事件
             uploadForm.addEventListener('submit', function() {
                 // 验证表单
                 if (uploadForm.checkValidity()) {
+                    // 如果是变化检测任务，确保参考图像已上传
+                    if (taskType.value === 'change_detection' && 
+                        (!referenceFileInput.files || referenceFileInput.files.length === 0)) {
+                        // 这里我们可以不严格要求参考图像，如果没有，系统会使用算法模拟的变化
+                        if (!confirm('您没有上传参考图像，系统将使用算法模拟的变化图像。是否继续？')) {
+                            return false;
+                        }
+                    }
+                    
                     // 显示加载动画
                     loadingOverlay.style.display = 'flex';
                     

@@ -9,15 +9,28 @@ import numpy as np
 
 # 导入Test2.py的工作流程
 from AgentCore import app as workflow_app, ImageState, cleanup_resources
+# 导入遥感图像处理模块
+from rs_processing import (
+    land_cover_classification, 
+    change_detection, 
+    object_detection, 
+    image_segmentation,
+    read_image,
+    image_to_base64,
+    UPLOAD_FOLDER,
+    RESULT_FOLDER
+)
 
 app = Flask(__name__)
 app.secret_key = "langchainvision_secret_key"
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制上传文件大小为16MB
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'tif', 'tiff'}  # 添加遥感图像格式支持
 
 # 确保上传目录存在
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# 确保结果目录存在
+os.makedirs(RESULT_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -323,25 +336,166 @@ def rs_upload_file():
         flash('请选择任务类型')
         return redirect(url_for('remote_sensing'))
     
+    # 获取可选参数
+    model_selection = request.form.get('model_selection', 'auto')
+    additional_params = request.form.get('additional_params', '')
+    
     if file and allowed_file(file.filename):
         # 保存上传的文件
         filename = secure_filename(file.filename)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
         
-        # TODO: 实现遥感图像分析工作流
-        # 临时使用一个简单的结果返回
-        result = {
-            "task": task_type,
-            "status": "completed",
-            "message": f"遥感图像分析任务 {task_type} 已提交，即将实现具体功能",
-            "is_remote_sensing": True
-        }
+        # 根据任务类型调用相应的分析函数
+        result = {"task": task_type, "status": "completed", "is_remote_sensing": True}
+        
+        try:
+            # 地物分类
+            if task_type == 'land_cover':
+                analysis_result = land_cover_classification(
+                    file_path, 
+                    model_name=model_selection if model_selection != 'auto' else 'swin-t'
+                )
+                if "error" in analysis_result:
+                    raise Exception(analysis_result["error"])
+                
+                result.update(analysis_result)
+                result["message"] = f"地物分类分析完成，共识别出{analysis_result.get('class_count', 7)}种地物类型。"
+            
+            # 变化检测
+            elif task_type == 'change_detection':
+                # 检查是否上传了参考图像
+                if 'reference_file' in request.files and request.files['reference_file'].filename != '':
+                    ref_file = request.files['reference_file']
+                    ref_filename = secure_filename(ref_file.filename)
+                    ref_path = os.path.join(app.config['UPLOAD_FOLDER'], f"ref_{ref_filename}")
+                    ref_file.save(ref_path)
+                else:
+                    ref_path = None
+                
+                analysis_result = change_detection(
+                    file_path, 
+                    reference_path=ref_path,
+                    model_name=model_selection if model_selection != 'auto' else 'bit-cd'
+                )
+                if "error" in analysis_result:
+                    raise Exception(analysis_result["error"])
+                
+                result.update(analysis_result)
+                result["message"] = "变化检测分析完成，已识别出多种地表变化类型。"
+            
+            # 目标识别
+            elif task_type == 'object_detection':
+                # 解析附加参数（如检测阈值）
+                conf_thresh = 0.5  # 默认值
+                if additional_params:
+                    # 解析类似"检测置信度=0.6"这样的参数
+                    params = {p.split('=')[0].strip(): p.split('=')[1].strip() 
+                              for p in additional_params.split(',') if '=' in p}
+                    if '检测置信度' in params:
+                        try:
+                            conf_thresh = float(params['检测置信度'])
+                        except ValueError:
+                            pass
+                
+                analysis_result = object_detection(
+                    file_path, 
+                    model_name=model_selection if model_selection != 'auto' else 'dino-v2',
+                    conf_thresh=conf_thresh
+                )
+                if "error" in analysis_result:
+                    raise Exception(analysis_result["error"])
+                
+                result.update(analysis_result)
+                result["message"] = f"目标检测分析完成，共检测到{len(analysis_result.get('detections', []))}个目标。"
+            
+            # 图像分割
+            elif task_type == 'segmentation':
+                # 解析附加参数（如分割精度）
+                n_segments = 100  # 默认值
+                if additional_params:
+                    params = {p.split('=')[0].strip(): p.split('=')[1].strip() 
+                              for p in additional_params.split(',') if '=' in p}
+                    if '分割精度' in params:
+                        if params['分割精度'] == '高':
+                            n_segments = 200
+                        elif params['分割精度'] == '低':
+                            n_segments = 50
+                
+                analysis_result = image_segmentation(
+                    file_path, 
+                    model_name=model_selection if model_selection != 'auto' else 'segformer',
+                    n_segments=n_segments
+                )
+                if "error" in analysis_result:
+                    raise Exception(analysis_result["error"])
+                
+                result.update(analysis_result)
+                result["message"] = "图像分割分析完成，已提取出主要地物边界。"
+            
+            else:
+                result["message"] = f"不支持的任务类型: {task_type}"
+                result["status"] = "error"
+                return render_template('rs_result.html', result=result, filename=filename)
+                
+        except Exception as e:
+            print(f"遥感分析错误: {str(e)}")
+            result["status"] = "error"
+            result["error"] = str(e)
+            result["message"] = f"分析过程中出错: {str(e)}"
+            flash(f'处理过程中出错: {str(e)}')
         
         return render_template('rs_result.html', result=result, filename=filename)
     
     flash('不支持的文件类型')
     return redirect(url_for('remote_sensing'))
+
+# 添加遥感数据参考图像上传路由
+@app.route('/rs_reference_upload', methods=['POST'])
+def rs_reference_upload():
+    """处理变化检测的参考图像上传"""
+    if 'reference_file' not in request.files:
+        return jsonify({"status": "error", "message": "没有选择文件"})
+    
+    file = request.files['reference_file']
+    
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "没有选择文件"})
+    
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"ref_{filename}")
+        file.save(file_path)
+        
+        # 读取图像并转换为Base64用于预览
+        image = read_image(file_path)
+        if image is None:
+            return jsonify({"status": "error", "message": "无法读取图像"})
+        
+        # 将图像转换为JPEG格式的Base64字符串
+        is_success, buffer = cv2.imencode('.jpg', cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        io_buf = io.BytesIO(buffer)
+        encoded_img = base64.b64encode(io_buf.getvalue()).decode('utf-8')
+        
+        return jsonify({
+            "status": "success", 
+            "filename": filename,
+            "preview": encoded_img
+        })
+    
+    return jsonify({"status": "error", "message": "不支持的文件类型"})
+
+# 添加AJAX数据获取路由
+@app.route('/rs_get_results/<task_id>', methods=['GET'])
+def get_rs_results(task_id):
+    """获取遥感分析任务的结果数据（用于异步更新）"""
+    # 在实际应用中，这里应该从数据库中查询结果
+    # 这里仅做演示
+    return jsonify({
+        "status": "completed",
+        "progress": 100,
+        "message": "分析完成"
+    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
