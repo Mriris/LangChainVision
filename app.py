@@ -400,13 +400,14 @@ def rs_upload_file():
                 
                 analysis_result = object_detection(
                     file_path, 
-                    model_name=model_selection if model_selection != 'auto' else 'dino-v2',
+                    model_name=model_selection if model_selection != 'auto' else 'yolov8-rs',
                     conf_thresh=conf_thresh
                 )
                 if "error" in analysis_result:
                     raise Exception(analysis_result["error"])
                 
                 result.update(analysis_result)
+                result["confidence_threshold"] = conf_thresh  # 添加置信度阈值到结果
                 result["message"] = f"目标检测分析完成，共检测到{len(analysis_result.get('detections', []))}个目标。"
             
             # 图像分割

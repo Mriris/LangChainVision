@@ -290,12 +290,17 @@
                             <div class="row">
                                 <div class="col-md-12">
                                     <h5>目标检测结果</h5>
-                                    <img src="data:image/jpeg;base64,{{ result.detection_image }}" alt="目标检测结果" class="img-fluid rs-result-image">
+                                    <div class="position-relative">
+                                        <img src="data:image/jpeg;base64,{{ result.detection_image }}" alt="目标检测结果" class="img-fluid rs-result-image">
+                                        {% if result.is_simulation %}
+                                            <div class="badge bg-warning position-absolute top-0 end-0 m-2">模拟数据</div>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </div>
                             
                             <div class="row mt-4">
-                                <div class="col-md-12">
+                                <div class="col-md-8">
                                     <h5>检测到的目标 ({{ result.detections|length }})</h5>
                                     <div class="table-responsive">
                                         <table class="table table-striped table-sm stats-table">
@@ -313,7 +318,14 @@
                                                 <tr>
                                                     <td>{{ detection.id }}</td>
                                                     <td>{{ detection.class }}</td>
-                                                    <td>{{ detection.confidence }}</td>
+                                                    <td>
+                                                        <div class="d-flex align-items-center">
+                                                            <span class="me-2">{{ (detection.confidence * 100)|int }}%</span>
+                                                            <div class="confidence-bar flex-grow-1">
+                                                                <div class="confidence-value" style="width: {{ (detection.confidence * 100)|int }}%"></div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
                                                     <td>[{{ detection.position[0] }}, {{ detection.position[1] }}]</td>
                                                     <td>{{ detection.size }}</td>
                                                 </tr>
@@ -321,6 +333,43 @@
                                             </tbody>
                                         </table>
                                     </div>
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <h5>目标分类统计</h5>
+                                    {% if result.class_counts %}
+                                        <div class="stats-container">
+                                            <table class="table table-sm mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>类别</th>
+                                                        <th>数量</th>
+                                                        <th>百分比</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for class_name, count in result.class_counts.items() %}
+                                                    <tr>
+                                                        <td>{{ class_name }}</td>
+                                                        <td>{{ count }}</td>
+                                                        <td>{{ (count / result.detections|length * 100)|int }}%</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        
+                                        <h5 class="mt-4">模型信息</h5>
+                                        <div class="stats-container">
+                                            <p class="mb-1"><strong>模型：</strong>{{ result.model }}</p>
+                                            <p class="mb-1"><strong>置信度阈值：</strong>{{ result.confidence_threshold|default(0.5) }}</p>
+                                            <p class="mb-0"><strong>检测类别数：</strong>{{ result.classes }}</p>
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-info">
+                                            检测结果中没有类别统计数据。
+                                        </div>
+                                    {% endif %}
                                 </div>
                             </div>
                             
