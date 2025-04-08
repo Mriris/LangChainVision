@@ -67,26 +67,30 @@
         </div>
 
         <div class="row">
-            <div class="col-md-6 mb-4">
-                <div class="feature-card">
-                    <img src="https://cdn.pixabay.com/photo/2016/03/26/13/09/workspace-1280538_960_720.jpg" class="card-img-top" alt="通用图像分析" onerror="this.src='https://via.placeholder.com/400x200?text=通用图像分析'">
-                    <div class="card-body text-center p-4">
-                        <i class="bi bi-image card-icon"></i>
-                        <h3 class="card-title">通用图像分析</h3>
-                        <p class="card-text mb-4">支持分类、目标检测、图像描述和图像增强等功能，适用于各类普通图像的智能处理。</p>
-                        <a href="/general" class="btn btn-primary btn-lg btn-custom">立即使用</a>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">通用图像分析</h5>
+                        <p class="card-text">使用先进的AI模型进行通用图像分析，包括物体检测、图像分类等。</p>
+                        <a href="{{ url_for('general') }}" class="btn btn-primary">开始分析</a>
                     </div>
                 </div>
             </div>
-            
-            <div class="col-md-6 mb-4">
-                <div class="feature-card">
-                    <img src="https://cdn.pixabay.com/photo/2016/04/23/14/08/hubble-telescope-1347645_1280.jpg" class="card-img-top" alt="遥感图像分析" onerror="this.src='https://via.placeholder.com/400x200?text=遥感图像分析'">
-                    <div class="card-body text-center p-4">
-                        <i class="bi bi-globe-americas card-icon"></i>
-                        <h3 class="card-title">遥感图像分析</h3>
-                        <p class="card-text mb-4">专为卫星和航空遥感图像设计，支持地物分类、变化检测、土地覆盖分析等专业功能。</p>
-                        <a href="/remote_sensing" class="btn btn-success btn-lg btn-custom">立即使用</a>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">遥感图像分析</h5>
+                        <p class="card-text">专业的遥感图像分析工具，支持地物分类、变化检测等功能。</p>
+                        <a href="{{ url_for('remote_sensing') }}" class="btn btn-primary">开始分析</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">界面元素解析</h5>
+                        <p class="card-text">使用OmniParser进行界面元素解析，识别和描述界面中的各种元素。</p>
+                        <a href="{{ url_for('omniparser_page') }}" class="btn btn-primary">开始解析</a>
                     </div>
                 </div>
             </div>

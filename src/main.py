@@ -1,21 +1,33 @@
 import os
 import base64
 from flask import Flask, render_template, request, jsonify, url_for, redirect, flash
+import torch
 from werkzeug.utils import secure_filename
 import io
 from PIL import Image
 import cv2
 import numpy as np
 import random
+import sys
 
-from src.agents.workflow import execute_workflow, workflow_app
-from src.utils.image_utils import image_to_base64, read_image
-from src.config.settings import (
+# 添加项目根目录到Python路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(current_dir)
+sys.path.insert(0, root_dir)  # 使用insert(0, ...)确保项目路径在最前面
+
+# 添加OmniParser相关导入
+sys.path.append(os.path.join(root_dir, "OmniParser"))
+from util.omniparser import Omniparser
+
+# 使用相对导入
+from .agents.workflow import execute_workflow, workflow_app
+from .utils.image_utils import image_to_base64, read_image
+from .config.settings import (
     UPLOAD_FOLDER, 
     RESULT_FOLDER, 
     ALLOWED_EXTENSIONS
 )
-from src.rs_processing import (
+from .rs_processing import (
     land_cover_classification, 
     change_detection, 
     object_detection, 
@@ -28,6 +40,25 @@ app.secret_key = "langchainvision_secret_key"
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制上传文件大小为16MB
 app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
+
+# OmniParser配置
+OMNIPARSER_CONFIG = {
+    'som_model_path': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                                  "OmniParser/weights/icon_detect/model.pt"),
+    'caption_model_name': 'florence2',
+    'caption_model_path': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                                      "OmniParser/weights/icon_caption_florence"),
+    'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+    'BOX_TRESHOLD': 0.05
+}
+
+# 初始化OmniParser
+try:
+    omniparser = Omniparser(OMNIPARSER_CONFIG)
+    print("OmniParser初始化成功")
+except Exception as e:
+    print(f"OmniParser初始化失败: {str(e)}")
+    omniparser = None
 
 # 确保目录存在
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -410,6 +441,46 @@ def rs_reference_upload():
         })
     
     return jsonify({"status": "error", "message": "不支持的文件类型"})
+
+@app.route('/omniparser', methods=['GET'])
+def omniparser_page():
+    """OmniParser页面"""
+    return render_template('omniparser.html')
+
+@app.route('/omniparser/parse', methods=['POST'])
+def omniparser_parse():
+    """处理OmniParser解析请求"""
+    if 'file' not in request.files:
+        return jsonify({"error": "没有选择文件"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "没有选择文件"}), 400
+    
+    if not allowed_file(file.filename):
+        return jsonify({"error": "不支持的文件类型"}), 400
+    
+    try:
+        # 将图像转换为base64
+        image_data = file.read()
+        base64_image = base64.b64encode(image_data).decode('utf-8')
+        
+        # 使用OmniParser进行解析
+        if omniparser is None:
+            return jsonify({"error": "OmniParser未初始化"}), 500
+            
+        dino_labled_img, parsed_content_list = omniparser.parse(base64_image)
+        
+        # 返回结果
+        return jsonify({
+            "status": "success",
+            "som_image_base64": dino_labled_img,
+            "parsed_content_list": parsed_content_list
+        })
+        
+    except Exception as e:
+        print(f"OmniParser解析错误: {str(e)}")
+        return jsonify({"error": f"解析过程中出错: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True) 
