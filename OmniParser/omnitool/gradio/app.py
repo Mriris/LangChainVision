@@ -38,6 +38,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Gradio App")
     parser.add_argument("--windows_host_url", type=str, default='localhost:8006')
     parser.add_argument("--omniparser_server_url", type=str, default="localhost:8000")
+    parser.add_argument("--ollama_server_url", type=str, default="http://localhost:11434")
     return parser.parse_args()
 args = parse_arguments()
 
@@ -59,6 +60,18 @@ def setup_state(state):
         state["openai_api_key"] = os.getenv("OPENAI_API_KEY", "")
     if "anthropic_api_key" not in state:
         state["anthropic_api_key"] = os.getenv("ANTHROPIC_API_KEY", "")
+    if "ollama_server_url" not in state:
+        state["ollama_server_url"] = args.ollama_server_url
+    if "ollama_model" not in state:
+        state["ollama_model"] = "llama3"
+    if "ollama_params" not in state:
+        # 设置默认的Ollama参数
+        state["ollama_params"] = {
+            "temperature": 0.7,
+            "num_ctx": 4096,
+            "top_p": 0.9,
+            "top_k": 40
+        }
     if "api_key" not in state:
         state["api_key"] = ""
     if "auth_validated" not in state:
@@ -200,13 +213,39 @@ def valid_params(user_input, state):
         except RequestException as e:
             errors.append(f"{server_name} is not responding")
     
-    if not state["api_key"].strip():
+    # 检查API密钥，如果不是ollama提供商才需要
+    if state["provider"] != "ollama" and not state["api_key"].strip():
         errors.append("LLM API Key is not set")
+    
+    # 检查Ollama服务器状态
+    if state["provider"] == "ollama":
+        try:
+            ollama_url = state["ollama_server_url"].rstrip("/")
+            response = requests.get(f"{ollama_url}/api/tags", timeout=3)
+            if response.status_code != 200:
+                errors.append("Ollama服务器未响应")
+        except RequestException as e:
+            errors.append(f"Ollama服务器连接错误: {str(e)}")
 
     if not user_input:
         errors.append("no computer use request provided")
     
     return errors
+
+def get_ollama_models(server_url):
+    """从Ollama服务器获取可用模型列表"""
+    try:
+        ollama_url = server_url.rstrip("/")
+        response = requests.get(f"{ollama_url}/api/tags", timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            # 提取模型名称列表
+            models = [model["name"] for model in data.get("models", [])]
+            return models
+        return []
+    except Exception as e:
+        print(f"获取Ollama模型列表失败: {str(e)}")
+        return []
 
 def process_input(user_input, state):
     # Reset the stop flag
@@ -232,6 +271,9 @@ def process_input(user_input, state):
     print("state")
     print(state)
 
+    # 获取Ollama参数（如果有）
+    ollama_params = state.get("ollama_params", {})
+
     # Run sampling_loop_sync with the chatbot_output_callback
     for loop_msg in sampling_loop_sync(
         model=state["model"],
@@ -243,7 +285,10 @@ def process_input(user_input, state):
         api_key=state["api_key"],
         only_n_most_recent_images=state["only_n_most_recent_images"],
         max_tokens=16384,
-        omniparser_url=args.omniparser_server_url
+        omniparser_url=args.omniparser_server_url,
+        ollama_server_url=state.get("ollama_server_url"),
+        ollama_model=state.get("ollama_model"),
+        ollama_params=ollama_params
     ):  
         if loop_msg is None or state.get("stop"):
             yield state['chatbot_messages']
@@ -303,7 +348,11 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
             with gr.Column():
                 model = gr.Dropdown(
                     label="Model",
-                    choices=["omniparser + gpt-4o", "omniparser + o1", "omniparser + o3-mini", "omniparser + R1", "omniparser + qwen2.5vl", "claude-3-5-sonnet-20241022", "omniparser + gpt-4o-orchestrated", "omniparser + o1-orchestrated", "omniparser + o3-mini-orchestrated", "omniparser + R1-orchestrated", "omniparser + qwen2.5vl-orchestrated"],
+                    choices=["omniparser + gpt-4o", "omniparser + o1", "omniparser + o3-mini", "omniparser + R1", 
+                            "omniparser + qwen2.5vl", "claude-3-5-sonnet-20241022", 
+                            "omniparser + gpt-4o-orchestrated", "omniparser + o1-orchestrated", 
+                            "omniparser + o3-mini-orchestrated", "omniparser + R1-orchestrated", 
+                            "omniparser + qwen2.5vl-orchestrated", "omniparser + ollama"],
                     value="omniparser + gpt-4o",
                     interactive=True,
                 )
@@ -320,7 +369,7 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
             with gr.Column(1):
                 provider = gr.Dropdown(
                     label="API Provider",
-                    choices=[option.value for option in APIProvider],
+                    choices=[option.value for option in APIProvider] + ["ollama"],
                     value="openai",
                     interactive=False,
                 )
@@ -331,6 +380,62 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
                     value=state.value.get("api_key", ""),
                     placeholder="Paste your API key here",
                     interactive=True,
+                )
+        
+        # 添加Ollama特定设置（条件显示）
+        with gr.Row(visible=False) as ollama_settings:
+            with gr.Column(1):
+                ollama_server = gr.Textbox(
+                    label="Ollama服务器URL",
+                    value=args.ollama_server_url,
+                    placeholder="http://localhost:11434",
+                    interactive=True,
+                )
+            with gr.Column(2):
+                # 将文本框改为下拉框，移除不支持的placeholder参数
+                ollama_model_selector = gr.Dropdown(
+                    label="Ollama模型",
+                    choices=["加载中..."],
+                    value="",
+                    interactive=True,
+                )
+                refresh_models_btn = gr.Button("刷新模型列表")
+        
+        # 添加Ollama参数设置面板
+        with gr.Row(visible=False) as ollama_params_panel:
+            with gr.Column(1):
+                temperature = gr.Slider(
+                    label="Temperature (温度)",
+                    minimum=0.0,
+                    maximum=2.0,
+                    step=0.1,
+                    value=0.7,
+                    info="值越高，回答越有创意；值越低，回答越连贯保守"
+                )
+                num_ctx = gr.Slider(
+                    label="Context Window (上下文窗口)",
+                    minimum=512,
+                    maximum=16384,
+                    step=512,
+                    value=4096,
+                    info="控制模型能够使用的token数量"
+                )
+            with gr.Column(1):
+                top_p = gr.Slider(
+                    label="Top P",
+                    minimum=0.1,
+                    maximum=1.0,
+                    step=0.05,
+                    value=0.9,
+                    info="与top_k配合使用，值越高，文本越多样化"
+                )
+                top_k = gr.Slider(
+                    label="Top K",
+                    minimum=1,
+                    maximum=100,
+                    step=1,
+                    value=40,
+                    info="减少生成无意义内容的概率，值越高答案越多样化"
                 )
 
     with gr.Row():
@@ -363,16 +468,34 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
             provider_choices = ["groq"]
         elif model_selection == "omniparser + qwen2.5vl":
             provider_choices = ["dashscope"]
+        elif model_selection == "omniparser + ollama":
+            provider_choices = ["ollama"]
+            state["provider"] = "ollama"
         else:
             provider_choices = [option.value for option in APIProvider]
         default_provider_value = provider_choices[0]
 
         provider_interactive = len(provider_choices) > 1
-        api_key_placeholder = f"{default_provider_value.title()} API Key"
+        api_key_placeholder = f"{default_provider_value.title()} API Key" if default_provider_value != "ollama" else "不需要API密钥"
 
         # Update state
         state["provider"] = default_provider_value
-        state["api_key"] = state.get(f"{default_provider_value}_api_key", "")
+        if default_provider_value != "ollama":
+            state["api_key"] = state.get(f"{default_provider_value}_api_key", "")
+        else:
+            state["api_key"] = ""  # ollama不需要API密钥
+
+        # 显示或隐藏Ollama设置
+        ollama_settings_visible = default_provider_value == "ollama"
+        
+        # 如果选择Ollama，自动获取模型列表
+        ollama_models = []
+        if ollama_settings_visible:
+            ollama_models = get_ollama_models(state["ollama_server_url"])
+            if ollama_models:
+                state["ollama_model"] = ollama_models[0]
+            else:
+                state["ollama_model"] = ""
 
         # Calls to update other components UI
         provider_update = gr.update(
@@ -382,10 +505,20 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
         )
         api_key_update = gr.update(
             placeholder=api_key_placeholder,
-            value=state["api_key"]
+            value=state["api_key"],
+            interactive=default_provider_value != "ollama"  # ollama不需要API密钥，因此禁用输入框
+        )
+        ollama_settings_update = gr.update(visible=ollama_settings_visible)
+        ollama_params_update = gr.update(visible=ollama_settings_visible)
+        
+        # 更新Ollama模型选择器
+        ollama_model_selector_update = gr.update(
+            choices=ollama_models if ollama_models else ["无可用模型或无法连接到Ollama服务器"],
+            value=state["ollama_model"] if ollama_models else "",
+            interactive=bool(ollama_models)
         )
 
-        return provider_update, api_key_update
+        return provider_update, api_key_update, ollama_settings_update, ollama_model_selector_update, ollama_params_update
 
     def update_only_n_images(only_n_images_value, state):
         state["only_n_most_recent_images"] = only_n_images_value
@@ -393,15 +526,87 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
     def update_provider(provider_value, state):
         # Update state
         state["provider"] = provider_value
-        state["api_key"] = state.get(f"{provider_value}_api_key", "")
+        if provider_value != "ollama":
+            state["api_key"] = state.get(f"{provider_value}_api_key", "")
+            api_key_placeholder = f"{provider_value.title()} API Key"
+            api_key_interactive = True
+        else:
+            state["api_key"] = ""  # ollama不需要API密钥
+            api_key_placeholder = "不需要API密钥"
+            api_key_interactive = False
+        
+        # 显示或隐藏Ollama设置
+        ollama_settings_visible = provider_value == "ollama"
+        
+        # 如果选择Ollama，自动获取模型列表
+        ollama_models = []
+        if ollama_settings_visible:
+            ollama_models = get_ollama_models(state["ollama_server_url"])
+            if ollama_models:
+                state["ollama_model"] = ollama_models[0]
+            else:
+                state["ollama_model"] = ""
         
         # Calls to update other components UI
         api_key_update = gr.update(
-            placeholder=f"{provider_value.title()} API Key",
-            value=state["api_key"]
+            placeholder=api_key_placeholder,
+            value=state["api_key"],
+            interactive=api_key_interactive
         )
-        return api_key_update
-                
+        ollama_settings_update = gr.update(visible=ollama_settings_visible)
+        ollama_params_update = gr.update(visible=ollama_settings_visible)
+        
+        # 更新Ollama模型选择器
+        ollama_model_selector_update = gr.update(
+            choices=ollama_models if ollama_models else ["无可用模型或无法连接到Ollama服务器"],
+            value=state["ollama_model"] if ollama_models else "",
+            interactive=bool(ollama_models)
+        )
+        
+        return api_key_update, ollama_settings_update, ollama_model_selector_update, ollama_params_update
+    
+    def update_ollama_server(server_url, state):
+        """更新Ollama服务器URL并刷新模型列表"""
+        state["ollama_server_url"] = server_url
+        
+        # 获取新服务器上的模型列表
+        ollama_models = get_ollama_models(server_url)
+        if ollama_models:
+            state["ollama_model"] = ollama_models[0]
+        else:
+            state["ollama_model"] = ""
+        
+        # 更新模型选择器
+        ollama_model_selector_update = gr.update(
+            choices=ollama_models if ollama_models else ["无可用模型或无法连接到Ollama服务器"],
+            value=state["ollama_model"] if ollama_models else "",
+            interactive=bool(ollama_models)
+        )
+        
+        return ollama_model_selector_update
+
+    def refresh_ollama_models(state):
+        """刷新Ollama模型列表"""
+        server_url = state["ollama_server_url"]
+        ollama_models = get_ollama_models(server_url)
+        
+        if ollama_models:
+            if not state["ollama_model"] or state["ollama_model"] not in ollama_models:
+                state["ollama_model"] = ollama_models[0]
+        else:
+            state["ollama_model"] = ""
+        
+        # 更新模型选择器
+        return gr.update(
+            choices=ollama_models if ollama_models else ["无可用模型或无法连接到Ollama服务器"],
+            value=state["ollama_model"] if ollama_models else "",
+            interactive=bool(ollama_models)
+        )
+
+    def update_ollama_model(model_name, state):
+        """更新选中的Ollama模型"""
+        state["ollama_model"] = model_name
+
     def update_api_key(api_key_value, state):
         state["api_key"] = api_key_value
         state[f'{state["provider"]}_api_key'] = api_key_value
@@ -414,11 +619,30 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
         state['chatbot_messages'] = []
         return state['chatbot_messages']
 
-    model.change(fn=update_model, inputs=[model, state], outputs=[provider, api_key])
+    def update_ollama_params(temperature_val, num_ctx_val, top_p_val, top_k_val, state):
+        """更新Ollama参数设置"""
+        state["ollama_params"] = {
+            "temperature": temperature_val,
+            "num_ctx": num_ctx_val,
+            "top_p": top_p_val,
+            "top_k": top_k_val
+        }
+        print(f"Ollama参数已更新: {state['ollama_params']}")
+
+    model.change(fn=update_model, inputs=[model, state], outputs=[provider, api_key, ollama_settings, ollama_model_selector, ollama_params_panel])
     only_n_images.change(fn=update_only_n_images, inputs=[only_n_images, state], outputs=None)
-    provider.change(fn=update_provider, inputs=[provider, state], outputs=api_key)
+    provider.change(fn=update_provider, inputs=[provider, state], outputs=[api_key, ollama_settings, ollama_model_selector, ollama_params_panel])
+    ollama_server.change(fn=update_ollama_server, inputs=[ollama_server, state], outputs=ollama_model_selector)
+    ollama_model_selector.change(fn=update_ollama_model, inputs=[ollama_model_selector, state], outputs=None)
+    refresh_models_btn.click(fn=refresh_ollama_models, inputs=[state], outputs=ollama_model_selector)
     api_key.change(fn=update_api_key, inputs=[api_key, state], outputs=None)
     chatbot.change(fn=clear_chat, inputs=[state], outputs=[chatbot])
+
+    # 添加Ollama参数更新事件
+    temperature.change(fn=update_ollama_params, inputs=[temperature, num_ctx, top_p, top_k, state], outputs=None)
+    num_ctx.change(fn=update_ollama_params, inputs=[temperature, num_ctx, top_p, top_k, state], outputs=None)
+    top_p.change(fn=update_ollama_params, inputs=[temperature, num_ctx, top_p, top_k, state], outputs=None)
+    top_k.change(fn=update_ollama_params, inputs=[temperature, num_ctx, top_p, top_k, state], outputs=None)
 
     submit_button.click(process_input, [chat_input, state], chatbot)
     stop_button.click(stop_app, [state], None)

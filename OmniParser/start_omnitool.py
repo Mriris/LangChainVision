@@ -19,6 +19,7 @@ class OmniToolStarter:
         self.omniparser_server_url = "http://127.0.0.1:8000"
         self.omnibox_url = "http://127.0.0.1:5000"
         self.gradio_url = "http://127.0.0.1:7888"
+        self.ollama_server_url = "http://localhost:11434"
 
     def check_conda_env(self):
         """检查conda环境是否正确设置"""
@@ -151,14 +152,16 @@ class OmniToolStarter:
             # 在Windows上使用
             if sys.platform == 'win32':
                 subprocess.Popen(
-                    ["python", "app.py", "--windows_host_url", "localhost:8006", "--omniparser_server_url", "localhost:8000"],
+                    ["python", "app.py", "--windows_host_url", "localhost:8006", "--omniparser_server_url", "localhost:8000", 
+                     "--ollama_server_url", self.ollama_server_url],
                     cwd=gradio_path,
                     creationflags=subprocess.CREATE_NEW_CONSOLE
                 )
             else:
                 # 在Linux/Mac上使用
                 subprocess.Popen(
-                    ["python", "app.py", "--windows_host_url", "localhost:8006", "--omniparser_server_url", "localhost:8000"],
+                    ["python", "app.py", "--windows_host_url", "localhost:8006", "--omniparser_server_url", "localhost:8000",
+                     "--ollama_server_url", self.ollama_server_url],
                     cwd=gradio_path
                 )
             return True

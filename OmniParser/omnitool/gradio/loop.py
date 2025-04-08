@@ -28,6 +28,8 @@ class APIProvider(StrEnum):
     BEDROCK = "bedrock"
     VERTEX = "vertex"
     OPENAI = "openai"
+    GROQ = "groq"
+    DASHSCOPE = "dashscope"
 
 
 PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
@@ -35,6 +37,8 @@ PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
     APIProvider.BEDROCK: "anthropic.claude-3-5-sonnet-20241022-v2:0",
     APIProvider.VERTEX: "claude-3-5-sonnet-v2@20241022",
     APIProvider.OPENAI: "gpt-4o",
+    APIProvider.GROQ: "mixtral-8x7b-32768",
+    APIProvider.DASHSCOPE: "qwen-vl-plus",
 }
 
 def sampling_loop_sync(
@@ -49,12 +53,16 @@ def sampling_loop_sync(
     only_n_most_recent_images: int | None = 2,
     max_tokens: int = 4096,
     omniparser_url: str,
+    ollama_server_url: str = None,
+    ollama_model: str = None,
+    ollama_params: dict = None,
     save_folder: str = "./uploads"
 ):
     """
     Synchronous agentic sampling loop for the assistant/tool interaction of computer use.
     """
     print('in sampling_loop_sync, model:', model)
+    print('ollama_params:', ollama_params)  # 打印参数以便调试
     omniparser_client = OmniParserClient(url=f"http://{omniparser_url}/parse/")
     if model == "claude-3-5-sonnet-20241022":
         # Register Actor and Executor
@@ -87,6 +95,23 @@ def sampling_loop_sync(
             only_n_most_recent_images=only_n_most_recent_images,
             save_folder=save_folder
         )
+    elif model == "omniparser + ollama":
+        # 使用VLMAgent处理Ollama模型
+        actor = VLMAgent(
+            model=model,
+            provider="ollama",  # 强制设为ollama
+            api_key=None,  # Ollama不需要API密钥
+            api_response_callback=api_response_callback,
+            output_callback=output_callback,
+            max_tokens=max_tokens,
+            only_n_most_recent_images=only_n_most_recent_images,
+            ollama_server_url=ollama_server_url,
+            ollama_model=ollama_model
+        )
+        # 增加调试输出，确认Ollama模型配置
+        print(f"Ollama配置 - 模型: {ollama_model}, 服务器: {ollama_server_url}")
+        if ollama_params:
+            print(f"Ollama自定义参数: {ollama_params}")
     else:
         raise ValueError(f"Model {model} not supported")
     executor = AnthropicExecutor(
@@ -115,13 +140,19 @@ def sampling_loop_sync(
 
             messages.append({"content": tool_result_content, "role": "user"})
     
-    elif model in set(["omniparser + gpt-4o", "omniparser + o1", "omniparser + o3-mini", "omniparser + R1", "omniparser + qwen2.5vl", "omniparser + gpt-4o-orchestrated", "omniparser + o1-orchestrated", "omniparser + o3-mini-orchestrated", "omniparser + R1-orchestrated", "omniparser + qwen2.5vl-orchestrated"]):
+    elif model in set(["omniparser + gpt-4o", "omniparser + o1", "omniparser + o3-mini", "omniparser + R1", "omniparser + qwen2.5vl", "omniparser + gpt-4o-orchestrated", "omniparser + o1-orchestrated", "omniparser + o3-mini-orchestrated", "omniparser + R1-orchestrated", "omniparser + qwen2.5vl-orchestrated", "omniparser + ollama"]):
         while True:
             parsed_screen = omniparser_client()
-            tools_use_needed, vlm_response_json = actor(messages=messages, parsed_screen=parsed_screen)
+            # 为Ollama模型传递参数
+            if model == "omniparser + ollama":
+                tools_use_needed, vlm_response_json = actor(messages=messages, parsed_screen=parsed_screen, ollama_params=ollama_params)
+            else:
+                tools_use_needed, vlm_response_json = actor(messages=messages, parsed_screen=parsed_screen)
 
             for message, tool_result_content in executor(tools_use_needed, messages):
                 yield message
         
             if not tool_result_content:
                 return messages
+
+            messages.append({"content": tool_result_content, "role": "user"})
