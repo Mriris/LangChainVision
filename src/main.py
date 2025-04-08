@@ -6,6 +6,7 @@ import io
 from PIL import Image
 import cv2
 import numpy as np
+import random
 
 from src.agents.workflow import execute_workflow, workflow_app
 from src.utils.image_utils import image_to_base64, read_image
@@ -193,9 +194,25 @@ def rs_upload_file():
                 # 确保classes存在
                 if "classes" not in result:
                     result["classes"] = {
-                        0: "森林", 1: "灌木", 2: "草地", 3: "裸地", 
-                        4: "水体", 5: "建筑", 6: "农田"
+                        "0": "森林", "1": "灌木", "2": "草地", "3": "裸地", 
+                        "4": "水体", "5": "建筑", "6": "农田"
                     }
+                # 确保stats包含color属性
+                if "stats" in result:
+                    for class_id, stats in result["stats"].items():
+                        if "color" not in stats:
+                            color_mapping = {
+                                "0": [0, 100, 0],     # 深绿色 - 森林
+                                "1": [124, 252, 0],   # 浅绿色 - 灌木
+                                "2": [152, 251, 152], # 淡绿色 - 草地
+                                "3": [139, 69, 19],   # 棕色 - 裸地
+                                "4": [0, 0, 255],     # 蓝色 - 水体
+                                "5": [128, 128, 128], # 灰色 - 建筑
+                                "6": [255, 255, 0],   # 黄色 - 农田
+                            }
+                            default_color = [200, 200, 200]  # 默认灰色
+                            stats["color"] = color_mapping.get(str(class_id), default_color)
+                
                 result["message"] = f"地物分类分析完成，共识别出{result.get('class_count', 7)}种地物类型。"
             
             # 变化检测
@@ -209,9 +226,17 @@ def rs_upload_file():
                 else:
                     ref_path = None
                 
+                # 确定使用的检测方法
+                method = "deep"  # 默认方法
+                if model_selection == "bit-cd":
+                    method = "bitemporal"
+                elif model_selection == "changeformer":
+                    method = "siamese"
+                
                 analysis_result = change_detection(
                     file_path, 
-                    reference_path=ref_path
+                    reference_path=ref_path,
+                    method=method
                 )
                 if isinstance(analysis_result, dict) and "error" in analysis_result:
                     raise Exception(analysis_result["error"])
@@ -252,12 +277,32 @@ def rs_upload_file():
                 # 确保class_counts存在
                 if "class_counts" not in result:
                     result["class_counts"] = {}
+                
+                # 确保class_confidences存在
+                if "class_confidences" not in result:
+                    result["class_confidences"] = {}
+                
+                # 计算每个类别的数量和平均置信度
+                if "detections" in result and result["detections"]:
                     for det in result.get("detections", []):
                         cls = det.get("class", "未知")
+                        conf = det.get("confidence", 0.0)
+                        
+                        # 更新类别计数
                         if cls in result["class_counts"]:
                             result["class_counts"][cls] += 1
+                            # 累加置信度，稍后计算平均值
+                            result["class_confidences"][cls] = (
+                                result["class_confidences"].get(cls, 0.0) + conf
+                            )
                         else:
                             result["class_counts"][cls] = 1
+                            result["class_confidences"][cls] = conf
+                    
+                    # 计算平均置信度
+                    for cls in result["class_confidences"]:
+                        if result["class_counts"][cls] > 0:
+                            result["class_confidences"][cls] /= result["class_counts"][cls]
                 
                 result["message"] = f"目标检测分析完成，共检测到{len(result.get('detections', []))}个目标。"
             
@@ -283,6 +328,27 @@ def rs_upload_file():
                     raise Exception(analysis_result["error"])
                 
                 result.update(analysis_result)
+                
+                # 确保区域统计格式正确
+                if "region_stats" in result:
+                    # 确保region_stats是字典格式，键为区域ID，值为区域属性
+                    if isinstance(result["region_stats"], list):
+                        region_stats_dict = {}
+                        for i, region in enumerate(result["region_stats"]):
+                            region_id = region.get("id", i)
+                            region_stats_dict[str(region_id)] = {
+                                "area": region.get("area", 0),
+                                "type": region.get("type", "未知"),
+                                "brightness": region.get("brightness", 0),
+                                "color": region.get("color", [random.randint(0, 255) for _ in range(3)])
+                            }
+                        result["region_stats"] = region_stats_dict
+                    
+                    # 确保每个区域都有color属性
+                    for region_id, stats in result["region_stats"].items():
+                        if "color" not in stats:
+                            stats["color"] = [random.randint(0, 255) for _ in range(3)]
+                
                 result["message"] = "图像分割分析完成，已提取出主要地物边界。"
             
             else:

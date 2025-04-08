@@ -110,7 +110,7 @@ class ModelProvider:
             weights_path = os.path.join(MODEL_WEIGHTS_DIR, "001_classicalSR_DF2K_s64w8_SwinIR-M_x4.pth")
             if os.path.exists(weights_path):
                 device = get_device()
-                pretrained_model = torch.load(weights_path, map_location=device)
+                pretrained_model = torch.load(weights_path, map_location=device, weights_only=False)
                 model.load_state_dict(
                     pretrained_model['params'] if 'params' in pretrained_model else pretrained_model, 
                     strict=True
@@ -121,7 +121,7 @@ class ModelProvider:
                 alt_weights_path = os.path.join(MODEL_WEIGHTS_DIR, "SwinIR_model.pth")
                 if os.path.exists(alt_weights_path):
                     device = get_device()
-                    pretrained_model = torch.load(alt_weights_path, map_location=device)
+                    pretrained_model = torch.load(alt_weights_path, map_location=device, weights_only=False)
                     model.load_state_dict(
                         pretrained_model['params'] if 'params' in pretrained_model else pretrained_model, 
                         strict=False

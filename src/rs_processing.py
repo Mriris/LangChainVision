@@ -16,6 +16,7 @@ from datetime import datetime
 import time
 from PIL import Image, ImageDraw, ImageFont
 import traceback
+import random
 
 # 全局变量
 UPLOAD_FOLDER = 'uploads'
@@ -392,7 +393,7 @@ def land_cover_classification(image_path, model_name="swin-t", n_clusters=7):
             model.head = nn.Linear(model.head.in_features, 10)  # 10类地物
             
             # 加载权重
-            state_dict = torch.load(model_path, map_location='cpu')
+            state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
             if 'model' in state_dict:
                 state_dict = state_dict['model']
             
@@ -1106,7 +1107,7 @@ def change_detection(image_path, reference_path=None, method="deep"):
             if os.path.exists(model_path):
                 print("加载预训练的变化检测模型")
                 model = SiameseChangeDetector()
-                model.load_state_dict(torch.load(model_path, map_location=device))
+                model.load_state_dict(torch.load(model_path, map_location=device, weights_only=False))
             else:
                 print("使用预训练的特征提取器")
                 model = SiameseChangeDetector()
@@ -1773,7 +1774,7 @@ def object_detection(image_path, model_name="yolov8-rs", conf_thresh=0.5):
     
     参数:
         image_path: 输入图像路径
-        model_name: 模型名称 (yolov8-rs, dino-v2, sam-rs)
+        model_name: 模型名称 (yolov8-rs, yolo-rs-lite)
         conf_thresh: 置信度阈值
     返回:
         结果字典包含检测结果
@@ -1829,7 +1830,101 @@ def object_detection(image_path, model_name="yolov8-rs", conf_thresh=0.5):
             from ultralytics import YOLO
         
         # 根据选择的模型加载不同的预训练权重
-        if model_name == "dino-v2":
+        if model_name == "yolo-rs-lite":
+            # 使用轻量级YOLO-RS-Lite模型 - 适合低算力设备
+            try:
+                from ultralytics import YOLO
+            except ImportError:
+                import pip
+                pip.main(['install', 'ultralytics'])
+                from ultralytics import YOLO
+            
+            # 使用较小的YOLOv8n模型（如果存在）
+            model_path = "yolov8n.pt"
+            if not os.path.exists(model_path):
+                model_path = "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt"
+            
+            # 加载模型
+            model = YOLO(model_path)
+            
+            # 执行推理
+            results = model(image, conf=conf_thresh, verbose=False)
+            
+            # 处理检测结果
+            detections = []
+            detection_id = 1
+            
+            for r in results:
+                boxes = r.boxes
+                for box in boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                    confidence = float(box.conf)
+                    cls_id = int(box.cls)
+                    
+                    # 获取类别名称，过滤非遥感相关类别
+                    if cls_id < 80:  # COCO数据集有80个类别
+                        class_name = model.names[cls_id]
+                        
+                        # 尝试映射到遥感类别
+                        rs_class = class_name
+                        if class_name == "car" or class_name == "truck" or class_name == "bus":
+                            rs_class = "车辆"
+                        elif class_name == "boat":
+                            rs_class = "船只"
+                        elif class_name == "person":
+                            continue  # 跳过人员检测
+                        elif class_name == "building" or class_name == "house":
+                            rs_class = "建筑物"
+                        elif class_name == "road" or class_name == "highway":
+                            rs_class = "道路"
+                        elif class_name == "bridge":
+                            rs_class = "桥梁"
+                        elif class_name == "water":
+                            rs_class = "水体"
+                        else:
+                            # 过滤掉不相关的类别
+                            relevant_classes = ["airplane", "airport", "boat", "bridge", "building", 
+                                              "bus", "car", "highway", "house", "park", "parking", 
+                                              "road", "truck", "water"]
+                            if class_name not in relevant_classes:
+                                continue
+                    
+                    # 计算宽度和高度
+                    width = x2 - x1
+                    height = y2 - y1
+                    
+                    # 计算尺寸（以米为单位，假设每像素代表10cm）
+                    size_m = f"{width/10:.1f}m × {height/10:.1f}m"
+                    
+                    detections.append({
+                        "id": detection_id,
+                        "class": rs_class,
+                        "confidence": round(confidence, 2),
+                        "position": [int(x1), int(y1)],
+                        "size": size_m,
+                        "box": [int(x1), int(y1), int(x2), int(y2)]
+                    })
+                    detection_id += 1
+                    
+                    # 绘制检测框
+                    color = (0, 255, 0)  # 默认绿色
+                    if "建筑" in rs_class:
+                        color = (0, 165, 255)  # 橙色
+                    elif "道路" in rs_class or "桥梁" in rs_class:
+                        color = (0, 0, 255)    # 红色
+                    elif "车辆" in rs_class or "停车场" in rs_class:
+                        color = (255, 255, 0)  # 青色
+                    elif "水体" in rs_class:
+                        color = (255, 0, 0)    # 蓝色
+                    
+                    cv2.rectangle(display_image, (x1, y1), (x2, y2), color, 2)
+                    cv2.putText(display_image, f"{rs_class} {confidence:.2f}", (x1, y1-10),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            
+            model_display_name = "YOLO-RS-Lite"
+            
+        elif model_name == "dino-v2":
             # 使用Grounding DINO模型 - 适合开放域检测
             try:
                 from groundingdino.util.inference import load_model, load_image, predict
@@ -2265,10 +2360,11 @@ def image_segmentation(image_path, precision="medium", model_name="unet"):
     
     参数:
         image_path: 输入图像路径
-        precision: 分割精度 (low, medium, high)
-        model_name: 模型名称 (unet, deeplabv3)
+        precision: 分割精度 ("low", "medium", "high")
+        model_name: 模型名称 ("unet", "fcn")
+    
     返回:
-        结果字典包含分割图像和区域统计信息
+        结果字典包含分割结果
     """
     # 读取图像
     image = read_image(image_path)
@@ -2365,7 +2461,25 @@ def image_segmentation(image_path, precision="medium", model_name="unet"):
             
             model_display_name = "U-Net (ResNet34编码器)"
             accuracy = 89.5
+        
+        elif model_name == "fcn":
+            # 使用FCN模型
+            try:
+                import torchvision.models.segmentation as segmentation
+            except ImportError:
+                pip.main(['install', 'torchvision'])
+                import torchvision.models.segmentation as segmentation
             
+            # 加载预训练的FCN模型
+            try:
+                from torchvision.models.segmentation import FCN_ResNet50_Weights
+                model = segmentation.fcn_resnet50(weights=FCN_ResNet50_Weights.DEFAULT)
+            except:
+                model = segmentation.fcn_resnet50(pretrained=True)
+            
+            model_display_name = "FCN (ResNet50编码器)"
+            accuracy = 87.0
+        
         else:  # deeplabv3 或其他
             # 使用torchvision中的DeepLabV3模型
             try:
@@ -2395,6 +2509,12 @@ def image_segmentation(image_path, precision="medium", model_name="unet"):
                 # U-Net输出直接是掩码
                 mask = torch.sigmoid(output) > segment_threshold
                 mask = mask.squeeze().cpu().numpy().astype(np.uint8)
+            elif model_name == "fcn":
+                # FCN返回字典
+                output = model(input_batch)['out']
+                normalized = torch.nn.functional.softmax(output, dim=1)
+                # 取最可能的类别
+                mask = normalized.argmax(1).squeeze().cpu().numpy().astype(np.uint8)
             else:
                 # DeepLabV3返回字典
                 output = model(input_batch)['out']

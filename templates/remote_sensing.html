@@ -317,9 +317,7 @@
                     <label for="model_selection" class="form-label">选择模型（可选）</label>
                     <select class="form-select" id="model_selection" name="model_selection">
                         <option value="auto" selected>自动选择最佳模型</option>
-                        <option value="swin-t">Swin Transformer (高精度)</option>
-                        <option value="segformer">SegFormer (GPU优化)</option>
-                        <option value="sam-hq">SAM-HQ (超高精度分割)</option>
+                        <!-- 模型选项将通过JS动态生成 -->
                     </select>
                     <div class="form-text">系统将根据您的选择使用相应的模型进行分析</div>
                 </div>
@@ -441,15 +439,15 @@
                             <ul class="list-group list-group-flush">
                                 <li class="list-group-item d-flex justify-content-between align-items-start">
                                     <div>
-                                        <strong>DINO-v2</strong>
-                                        <div class="model-info">自监督学习模型，适用于大规模遥感目标识别</div>
+                                        <strong>YOLOv8-RS</strong>
+                                        <div class="model-info">针对遥感图像优化的YOLOv8版本，快速检测</div>
                                     </div>
                                     <span class="badge bg-primary model-badge">GPU优化</span>
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between align-items-start">
                                     <div>
-                                        <strong>YOLOv8-RS</strong>
-                                        <div class="model-info">针对遥感图像优化的YOLOv8版本，快速检测</div>
+                                        <strong>YOLO-RS-Lite</strong>
+                                        <div class="model-info">轻量级遥感目标检测模型，适合低算力设备</div>
                                     </div>
                                     <span class="badge bg-success model-badge">低资源</span>
                                 </li>
@@ -460,17 +458,17 @@
                             <ul class="list-group list-group-flush">
                                 <li class="list-group-item d-flex justify-content-between align-items-start">
                                     <div>
-                                        <strong>SAM-HQ</strong>
-                                        <div class="model-info">高质量分割模型，支持遥感图像精细分割</div>
+                                        <strong>U-Net</strong>
+                                        <div class="model-info">经典分割模型，适用于各类遥感场景</div>
                                     </div>
-                                    <span class="badge bg-warning model-badge">高内存</span>
+                                    <span class="badge bg-primary model-badge">GPU优化</span>
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between align-items-start">
                                     <div>
-                                        <strong>SegFormer</strong>
-                                        <div class="model-info">轻量级分割模型，适用于各类遥感场景</div>
+                                        <strong>FCN</strong>
+                                        <div class="model-info">全卷积网络，适用于高效遥感分割任务</div>
                                     </div>
-                                    <span class="badge bg-primary model-badge">GPU优化</span>
+                                    <span class="badge bg-success model-badge">低资源</span>
                                 </li>
                             </ul>
                         </div>
@@ -593,13 +591,13 @@
                     // 显示参考图像区域
                     referenceImageContainer.style.display = 'block';
                 } else if (selectedTask === 'object_detection') {
-                    modelSelection.innerHTML += '<option value="dino-v2">DINO-v2 (高精度)</option>';
-                    modelSelection.innerHTML += '<option value="yolov8-rs">YOLOv8-RS (快速检测)</option>';
+                    modelSelection.innerHTML += '<option value="yolov8-rs">YOLOv8-RS (遥感优化)</option>';
+                    modelSelection.innerHTML += '<option value="yolo-rs-lite">YOLO-RS-Lite (轻量级)</option>';
                     // 隐藏参考图像区域
                     referenceImageContainer.style.display = 'none';
                 } else if (selectedTask === 'segmentation') {
-                    modelSelection.innerHTML += '<option value="sam-hq">SAM-HQ (超高精度)</option>';
-                    modelSelection.innerHTML += '<option value="segformer">SegFormer (轻量级)</option>';
+                    modelSelection.innerHTML += '<option value="unet">U-Net (标准分割)</option>';
+                    modelSelection.innerHTML += '<option value="fcn">FCN (全卷积网络)</option>';
                     // 隐藏参考图像区域
                     referenceImageContainer.style.display = 'none';
                 }

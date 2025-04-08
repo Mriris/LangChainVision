@@ -245,14 +245,10 @@
                                                     {% for class_id, stats in result.stats.items() %}
                                                     <tr>
                                                         <td>
-                                                            <span style="background-color: rgb(
-                                                                {% if class_id|string in result.classes %}
-                                                                    {% set class_id_str = class_id|string %}
-                                                                {% else %}
-                                                                    {% set class_id_str = '0' %}
-                                                                {% endif %}
-                                                            )"></span>
-                                                            {{ result.classes[class_id_str] if class_id_str in result.classes else '未知' }}
+                                                            <div style="display: inline-block; width: 15px; height: 15px; background-color: rgb(
+                                                                {{ stats.color[0] }}, {{ stats.color[1] }}, {{ stats.color[2] }}
+                                                            ); margin-right: 5px; border-radius: 3px;"></div>
+                                                            {{ result.classes[class_id|string] if class_id|string in result.classes else '未知' }}
                                                         </td>
                                                         <td>{{ stats.area_km2 }} km²</td>
                                                         <td>{{ stats.percentage }}%</td>
@@ -317,14 +313,24 @@
                                                     {% for change_id, stats in result.stats.items() %}
                                                     <tr>
                                                         <td>
-                                                            <span style="background-color: rgb(
-                                                                {% if change_id|string in result.change_types %}
-                                                                    {% set change_id_str = change_id|string %}
+                                                            <div style="display: inline-block; width: 15px; height: 15px; background-color: rgb(
+                                                                {% if change_id == 0 %}
+                                                                    255, 255, 255
+                                                                {% elif change_id == 1 %}
+                                                                    255, 0, 0
+                                                                {% elif change_id == 2 %}
+                                                                    0, 0, 255
+                                                                {% elif change_id == 3 %}
+                                                                    255, 0, 255
+                                                                {% elif change_id == 4 %}
+                                                                    0, 255, 0
+                                                                {% elif change_id == 5 %}
+                                                                    0, 255, 255
                                                                 {% else %}
-                                                                    {% set change_id_str = '0' %}
+                                                                    128, 128, 128
                                                                 {% endif %}
-                                                            )"></span>
-                                                            {{ result.change_types[change_id_str] if change_id_str in result.change_types else '未知' }}
+                                                            ); margin-right: 5px; border-radius: 3px;"></div>
+                                                            {{ result.change_types[change_id|string] if change_id|string in result.change_types else '未知' }}
                                                         </td>
                                                         <td>{{ stats.area_km2 }} km²</td>
                                                         <td>{{ stats.percentage }}%</td>
@@ -348,132 +354,139 @@
                             </div>
                             
                         {% elif result.task == 'object_detection' %}
-                            <!-- 目标检测结果 -->
+                            <!-- 目标识别结果 -->
                             <div class="row">
                                 <div class="col-md-12">
-                                    <h5>目标检测结果</h5>
-                                    <div class="position-relative">
-                                        <img src="data:image/jpeg;base64,{{ result.detection_image }}" alt="目标检测结果" class="img-fluid rs-result-image">
-                                        {% if result.is_simulation %}
-                                            <div class="badge bg-warning position-absolute top-0 end-0 m-2">模拟数据</div>
-                                        {% endif %}
-                                    </div>
+                                    <h5>目标识别结果</h5>
+                                    {% if result.status == "error" %}
+                                        <div class="alert alert-danger">
+                                            {{ result.message }}
+                                        </div>
+                                    {% else %}
+                                        <img src="data:image/jpeg;base64,{{ result.detection_image }}" alt="目标识别结果" class="img-fluid rs-result-image">
+                                    {% endif %}
                                 </div>
                             </div>
                             
                             <div class="row mt-4">
                                 <div class="col-md-8">
-                                    <h5>检测到的目标 ({{ result.detections|length }})</h5>
-                                    <div class="table-responsive">
-                                        <table class="table table-striped table-sm stats-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>#</th>
-                                                    <th>类别</th>
-                                                    <th>置信度</th>
-                                                    <th>位置坐标</th>
-                                                    <th>尺寸</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for detection in result.detections %}
-                                                <tr>
-                                                    <td>{{ detection.id }}</td>
-                                                    <td>{{ detection.class }}</td>
-                                                    <td>
-                                                        <div class="d-flex align-items-center">
-                                                            <span class="me-2">{{ (detection.confidence * 100)|int }}%</span>
-                                                            <div class="confidence-bar flex-grow-1">
-                                                                <div class="confidence-value" style="width: {{ (detection.confidence * 100)|int }}%"></div>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td>[{{ detection.position[0] }}, {{ detection.position[1] }}]</td>
-                                                    <td>{{ detection.size }}</td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-4">
-                                    <h5>目标分类统计</h5>
-                                    {% if result.class_counts %}
-                                        <div class="stats-container">
-                                            <table class="table table-sm mb-0">
+                                    <h5>检测到的目标</h5>
+                                    {% if result.status != "error" and result.detections %}
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-sm stats-table">
                                                 <thead>
                                                     <tr>
                                                         <th>类别</th>
                                                         <th>数量</th>
-                                                        <th>百分比</th>
+                                                        <th>平均置信度</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {% for class_name, count in result.class_counts.items() %}
+                                                    {% for cls, count in result.class_counts.items() %}
                                                     <tr>
-                                                        <td>{{ class_name }}</td>
+                                                        <td>{{ cls }}</td>
                                                         <td>{{ count }}</td>
-                                                        <td>{{ (count / result.detections|length * 100)|int }}%</td>
+                                                        <td>
+                                                            {% set avg_conf = result.class_confidences[cls] if cls in result.class_confidences else 0.0 %}
+                                                            <div class="confidence-bar">
+                                                                <div class="confidence-value" style="width: {{ avg_conf * 100 }}%;"></div>
+                                                            </div>
+                                                            {{ "%.1f"|format(avg_conf * 100) }}%
+                                                        </td>
                                                     </tr>
                                                     {% endfor %}
                                                 </tbody>
                                             </table>
                                         </div>
-                                        
-                                        <h5 class="mt-4">模型信息</h5>
-                                        <div class="stats-container">
-                                            <p class="mb-1"><strong>模型：</strong>{{ result.model }}</p>
-                                            <p class="mb-1"><strong>置信度阈值：</strong>{{ result.confidence_threshold|default(0.5) }}</p>
-                                            <p class="mb-0"><strong>检测类别数：</strong>{{ result.classes }}</p>
-                                        </div>
                                     {% else %}
                                         <div class="alert alert-info">
-                                            检测结果中没有类别统计数据。
+                                            未检测到目标。
                                         </div>
                                     {% endif %}
+                                </div>
+                                <div class="col-md-4">
+                                    <h5>检测信息</h5>
+                                    <div class="stats-container">
+                                        <p><strong>目标总数：</strong>{{ result.detections|length if result.detections else 0 }}</p>
+                                        <p><strong>置信度阈值：</strong>{{ result.confidence_threshold }}</p>
+                                        <p><strong>检测类别数：</strong>{{ result.class_counts|length if result.class_counts else 0 }}</p>
+                                    </div>
                                 </div>
                             </div>
                             
                         {% elif result.task == 'segmentation' %}
                             <!-- 图像分割结果 -->
                             <div class="row">
-                                <div class="col-md-6">
-                                    <h5>原始图像</h5>
-                                    <img src="data:image/jpeg;base64,{{ result.original_image }}" alt="原始图像" class="img-fluid rs-result-image">
-                                </div>
-                                <div class="col-md-6">
-                                    <h5>分割结果</h5>
-                                    <img src="data:image/jpeg;base64,{{ result.segmentation_image }}" alt="分割结果" class="img-fluid rs-result-image">
+                                <div class="col-md-12">
+                                    <h5>图像分割结果</h5>
+                                    {% if result.status == "error" %}
+                                        <div class="alert alert-danger">
+                                            {{ result.message }}
+                                        </div>
+                                    {% else %}
+                                        <img src="data:image/jpeg;base64,{{ result.segmentation_image }}" alt="分割结果" class="img-fluid rs-result-image">
+                                    {% endif %}
                                 </div>
                             </div>
                             
+                            {% if result.status != "error" and result.comparison_image %}
                             <div class="row mt-4">
                                 <div class="col-md-12">
-                                    <h5>分割区域统计</h5>
-                                    <div class="table-responsive">
-                                        <table class="table table-striped table-sm stats-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>#</th>
-                                                    <th>区域类型</th>
-                                                    <th>面积 (像素)</th>
-                                                    <th>周长 (像素)</th>
-                                                    <th>复杂度</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for region in result.region_stats %}
-                                                <tr>
-                                                    <td>{{ region.id }}</td>
-                                                    <td>{{ region.type }}</td>
-                                                    <td>{{ "{:,}".format(region.area) }}</td>
-                                                    <td>{{ "{:,}".format(region.perimeter|int) }}</td>
-                                                    <td>{{ region.complexity }}</td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
+                                    <h5>对比图</h5>
+                                    <img src="data:image/jpeg;base64,{{ result.comparison_image }}" alt="对比图" class="img-fluid rs-result-image">
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            <div class="row mt-4">
+                                <div class="col-md-8">
+                                    <h5>区域统计</h5>
+                                    {% if result.status != "error" and result.region_stats %}
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-sm stats-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>区域ID</th>
+                                                        <th>面积 (像素)</th>
+                                                        <th>可能的地物类型</th>
+                                                        <th>平均亮度</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for region_id, stats in result.region_stats.items() %}
+                                                    {% if loop.index <= 10 %}  <!-- 只显示前10个区域 -->
+                                                    <tr>
+                                                        <td>
+                                                            <div style="display: inline-block; width: 15px; height: 15px; background-color: rgb(
+                                                                {{ stats.color[0] }}, {{ stats.color[1] }}, {{ stats.color[2] }}
+                                                            ); margin-right: 5px; border-radius: 3px;"></div>
+                                                            {{ region_id }}
+                                                        </td>
+                                                        <td>{{ stats.area }}</td>
+                                                        <td>{{ stats.type }}</td>
+                                                        <td>{{ stats.brightness }}</td>
+                                                    </tr>
+                                                    {% endif %}
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                            {% if result.region_stats|length > 10 %}
+                                                <div class="text-muted small">显示前10个区域，共{{ result.region_stats|length }}个区域</div>
+                                            {% endif %}
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-info">
+                                            无可用的区域统计数据。
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <h5>模型信息</h5>
+                                    <div class="stats-container">
+                                        <p><strong>模型：</strong>{{ result.model }}</p>
+                                        <p><strong>分割精度：</strong>{{ result.precision }}</p>
+                                        <p><strong>区域数量：</strong>{{ result.region_stats|length if result.region_stats else 0 }}</p>
                                     </div>
                                 </div>
                             </div>
