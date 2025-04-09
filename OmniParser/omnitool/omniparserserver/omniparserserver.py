@@ -15,13 +15,13 @@ from util.omniparser import Omniparser
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Omniparser API')
-    parser.add_argument('--som_model_path', type=str, default='../../weights/icon_detect/model.pt', help='Path to the som model')
-    parser.add_argument('--caption_model_name', type=str, default='florence2', help='Name of the caption model')
-    parser.add_argument('--caption_model_path', type=str, default='../../weights/icon_caption_florence', help='Path to the caption model')
-    parser.add_argument('--device', type=str, default='cpu', help='Device to run the model')
-    parser.add_argument('--BOX_TRESHOLD', type=float, default=0.05, help='Threshold for box detection')
-    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host for the API')
-    parser.add_argument('--port', type=int, default=8000, help='Port for the API')
+    parser.add_argument('--som_model_path', type=str, default='../../weights/icon_detect/model.pt', help='SOM模型路径')
+    parser.add_argument('--caption_model_name', type=str, default='florence2', help='标题模型名称')
+    parser.add_argument('--caption_model_path', type=str, default='../../weights/icon_caption_florence', help='标题模型路径')
+    parser.add_argument('--device', type=str, default='cpu', help='运行模型的设备')
+    parser.add_argument('--BOX_TRESHOLD', type=float, default=0.05, help='框检测阈值')
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='API主机地址')
+    parser.add_argument('--port', type=int, default=8000, help='API端口')
     args = parser.parse_args()
     return args
 
@@ -36,16 +36,16 @@ class ParseRequest(BaseModel):
 
 @app.post("/parse/")
 async def parse(parse_request: ParseRequest):
-    print('start parsing...')
+    print('开始解析...')
     start = time.time()
     dino_labled_img, parsed_content_list = omniparser.parse(parse_request.base64_image)
     latency = time.time() - start
-    print('time:', latency)
+    print('耗时:', latency)
     return {"som_image_base64": dino_labled_img, "parsed_content_list": parsed_content_list, 'latency': latency}
 
 @app.get("/probe/")
 async def root():
-    return {"message": "Omniparser API ready"}
+    return {"message": "Omniparser API 就绪"}
 
 if __name__ == "__main__":
     uvicorn.run("omniparserserver:app", host=args.host, port=args.port, reload=True)

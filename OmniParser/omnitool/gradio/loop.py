@@ -1,5 +1,6 @@
 """
 Agentic sampling loop that calls the Anthropic API and local implenmentation of anthropic-defined computer use tools.
+代理采样循环，调用Anthropic API和本地实现的anthropic定义的计算机使用工具。
 """
 from collections.abc import Callable
 from enum import StrEnum
@@ -59,13 +60,13 @@ def sampling_loop_sync(
     save_folder: str = "./uploads"
 ):
     """
-    Synchronous agentic sampling loop for the assistant/tool interaction of computer use.
+    助手/工具交互的计算机使用的同步代理采样循环。
     """
-    print('in sampling_loop_sync, model:', model)
-    print('ollama_params:', ollama_params)  # 打印参数以便调试
+    print('在sampling_loop_sync中，模型:', model)
+    print('ollama参数:', ollama_params)  # 打印参数以便调试
     omniparser_client = OmniParserClient(url=f"http://{omniparser_url}/parse/")
     if model == "claude-3-5-sonnet-20241022":
-        # Register Actor and Executor
+        # 注册Actor和Executor
         actor = AnthropicActor(
             model=model, 
             provider=provider,
@@ -113,21 +114,21 @@ def sampling_loop_sync(
         if ollama_params:
             print(f"Ollama自定义参数: {ollama_params}")
     else:
-        raise ValueError(f"Model {model} not supported")
+        raise ValueError(f"不支持模型 {model}")
     executor = AnthropicExecutor(
         output_callback=output_callback,
         tool_output_callback=tool_output_callback,
     )
-    print(f"Model Inited: {model}, Provider: {provider}")
+    print(f"模型已初始化: {model}, 提供商: {provider}")
     
     tool_result_content = None
     
-    print(f"Start the message loop. User messages: {messages}")
+    print(f"开始消息循环。用户消息: {messages}")
     
-    if model == "claude-3-5-sonnet-20241022": # Anthropic loop
+    if model == "claude-3-5-sonnet-20241022": # Anthropic循环
         while True:
             parsed_screen = omniparser_client() # parsed_screen: {"som_image_base64": dino_labled_img, "parsed_content_list": parsed_content_list, "screen_info"}
-            screen_info_block = TextBlock(text='Below is the structured accessibility information of the current UI screen, which includes text and icons you can operate on, take these information into account when you are making the prediction for the next action. Note you will still need to take screenshot to get the image: \n' + parsed_screen['screen_info'], type='text')
+            screen_info_block = TextBlock(text='以下是当前UI屏幕的结构化可访问信息，包括您可以操作的文本和图标，在预测下一步操作时请考虑这些信息。请注意，您仍需要截图获取图像: \n' + parsed_screen['screen_info'], type='text')
             screen_info_dict = {"role": "user", "content": [screen_info_block]}
             messages.append(screen_info_dict)
             tools_use_needed = actor(messages=messages)

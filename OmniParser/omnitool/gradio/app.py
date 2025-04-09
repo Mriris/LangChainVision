@@ -28,9 +28,9 @@ CONFIG_DIR = Path("~/.anthropic").expanduser()
 API_KEY_FILE = CONFIG_DIR / "api_key"
 
 INTRO_TEXT = '''
-OmniParser lets you turn any vision-langauge model into an AI agent. We currently support **OpenAI (4o/o1/o3-mini), DeepSeek (R1), Qwen (2.5VL) or Anthropic Computer Use (Sonnet).**
+OmniParser让您可以将任何视觉-语言模型转变为AI代理。我们目前支持**OpenAI (4o/o1/o3-mini)、DeepSeek (R1)、Qwen (2.5VL)或Anthropic Computer Use (Sonnet)**。
 
-Type a message and press submit to start OmniTool. Press stop to pause, and press the trash icon in the chat to clear the message history.
+输入消息并点击提交以启动OmniTool。点击停止暂停，点击聊天框中的垃圾桶图标清除消息历史。
 '''
 
 def parse_arguments():
@@ -90,27 +90,27 @@ def setup_state(state):
 async def main(state):
     """Render loop for Gradio"""
     setup_state(state)
-    return "Setup completed"
+    return "设置完成"
 
 def validate_auth(provider: APIProvider, api_key: str | None):
     if provider == APIProvider.ANTHROPIC:
         if not api_key:
-            return "Enter your Anthropic API key to continue."
+            return "请输入您的Anthropic API密钥以继续。"
     if provider == APIProvider.BEDROCK:
         import boto3
 
         if not boto3.Session().get_credentials():
-            return "You must have AWS credentials set up to use the Bedrock API."
+            return "您必须设置AWS凭证才能使用Bedrock API。"
     if provider == APIProvider.VERTEX:
         import google.auth
         from google.auth.exceptions import DefaultCredentialsError
 
         if not os.environ.get("CLOUD_ML_REGION"):
-            return "Set the CLOUD_ML_REGION environment variable to use the Vertex API."
+            return "请设置CLOUD_ML_REGION环境变量以使用Vertex API。"
         try:
             google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
         except DefaultCredentialsError:
-            return "Your google cloud credentials are not set up correctly."
+            return "您的Google Cloud凭证设置不正确。"
 
 def load_from_storage(filename: str) -> str | None:
     """Load data from a file in the storage directory."""
@@ -121,7 +121,7 @@ def load_from_storage(filename: str) -> str | None:
             if data:
                 return data
     except Exception as e:
-        print(f"Debug: Error loading {filename}: {e}")
+        print(f"调试: 加载{filename}时出错: {e}")
     return None
 
 def save_to_storage(filename: str, data: str) -> None:
@@ -133,7 +133,7 @@ def save_to_storage(filename: str, data: str) -> None:
         # Ensure only user can read/write the file
         file_path.chmod(0o600)
     except Exception as e:
-        print(f"Debug: Error saving {filename}: {e}")
+        print(f"调试: 保存{filename}时出错: {e}")
 
 def _api_response_callback(response: APIResponse[BetaMessage], response_state: dict):
     response_id = datetime.now().isoformat()
@@ -167,7 +167,7 @@ def chatbot_output_callback(message, chatbot_state, hide_images=False, sender="b
             if message.output:
                 return message.output
             if message.error:
-                return f"Error: {message.error}"
+                return f"错误: {message.error}"
             if message.base64_image and not hide_images:
                 # somehow can't display via gr.Image
                 # image_data = base64.b64decode(message.base64_image)
@@ -175,10 +175,10 @@ def chatbot_output_callback(message, chatbot_state, hide_images=False, sender="b
                 return f'<img src="data:image/png;base64,{message.base64_image}">'
 
         elif isinstance(message, BetaTextBlock) or isinstance(message, TextBlock):
-            return f"Analysis: {message.text}"
+            return f"分析: {message.text}"
         elif isinstance(message, BetaToolUseBlock) or isinstance(message, ToolUseBlock):
             # return f"Tool Use: {message.name}\nInput: {message.input}"
-            return f"Next I will perform the following action: {message.input}"
+            return f"接下来我将执行以下操作: {message.input}"
         else:  
             return message
 
@@ -209,13 +209,13 @@ def valid_params(user_input, state):
             url = f'http://{url}/probe'
             response = requests.get(url, timeout=3)
             if response.status_code != 200:
-                errors.append(f"{server_name} is not responding")
+                errors.append(f"{server_name}没有响应")
         except RequestException as e:
-            errors.append(f"{server_name} is not responding")
+            errors.append(f"{server_name}没有响应")
     
     # 检查API密钥，如果不是ollama提供商才需要
     if state["provider"] != "ollama" and not state["api_key"].strip():
-        errors.append("LLM API Key is not set")
+        errors.append("未设置LLM API密钥")
     
     # 检查Ollama服务器状态
     if state["provider"] == "ollama":
@@ -228,7 +228,7 @@ def valid_params(user_input, state):
             errors.append(f"Ollama服务器连接错误: {str(e)}")
 
     if not user_input:
-        errors.append("no computer use request provided")
+        errors.append("未提供计算机使用请求")
     
     return errors
 
@@ -254,7 +254,7 @@ def process_input(user_input, state):
 
     errors = valid_params(user_input, state)
     if errors:
-        raise gr.Error("Validation errors: " + ", ".join(errors))
+        raise gr.Error("验证错误: " + ", ".join(errors))
     
     # Append the user message to state["messages"]
     state["messages"].append(
@@ -292,14 +292,14 @@ def process_input(user_input, state):
     ):  
         if loop_msg is None or state.get("stop"):
             yield state['chatbot_messages']
-            print("End of task. Close the loop.")
+            print("任务结束。关闭循环。")
             break
             
         yield state['chatbot_messages']  # Yield the updated chatbot_messages to update the chatbot UI
 
 def stop_app(state):
     state["stop"] = True
-    return "App stopped"
+    return "应用已停止"
 
 def get_header_image_base64():
     try:
@@ -311,7 +311,7 @@ def get_header_image_base64():
             encoded_string = base64.b64encode(image_file.read()).decode()
             return f'data:image/png;base64,{encoded_string}'
     except Exception as e:
-        print(f"Failed to load header image: {e}")
+        print(f"加载头图失败: {e}")
         return None
 
 with gr.Blocks(theme=gr.themes.Default()) as demo:
@@ -334,7 +334,7 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
     
     header_image = get_header_image_base64()
     if header_image:
-        gr.HTML(f'<img src="{header_image}" alt="OmniTool Header" width="100%">', elem_classes="no-padding")
+        gr.HTML(f'<img src="{header_image}" alt="OmniTool标题" width="100%">', elem_classes="no-padding")
         gr.HTML('<h1 style="text-align: center; font-weight: normal;">Omni<span style="font-weight: bold;">Tool</span></h1>')
     else:
         gr.Markdown("# OmniTool")
@@ -343,11 +343,11 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
         gr.Markdown(INTRO_TEXT, elem_classes="markdown-text")
 
 
-    with gr.Accordion("Settings", open=True): 
+    with gr.Accordion("设置", open=True): 
         with gr.Row():
             with gr.Column():
                 model = gr.Dropdown(
-                    label="Model",
+                    label="模型",
                     choices=["omniparser + gpt-4o", "omniparser + o1", "omniparser + o3-mini", "omniparser + R1", 
                             "omniparser + qwen2.5vl", "claude-3-5-sonnet-20241022", 
                             "omniparser + gpt-4o-orchestrated", "omniparser + o1-orchestrated", 
@@ -358,7 +358,7 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
                 )
             with gr.Column():
                 only_n_images = gr.Slider(
-                    label="N most recent screenshots",
+                    label="保留最近N张截图",
                     minimum=0,
                     maximum=10,
                     step=1,
@@ -368,17 +368,17 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
         with gr.Row():
             with gr.Column(1):
                 provider = gr.Dropdown(
-                    label="API Provider",
+                    label="API提供商",
                     choices=[option.value for option in APIProvider] + ["ollama"],
                     value="openai",
                     interactive=False,
                 )
             with gr.Column(2):
                 api_key = gr.Textbox(
-                    label="API Key",
+                    label="API密钥",
                     type="password",
                     value=state.value.get("api_key", ""),
-                    placeholder="Paste your API key here",
+                    placeholder="在此粘贴您的API密钥",
                     interactive=True,
                 )
         
@@ -440,15 +440,15 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
 
     with gr.Row():
         with gr.Column(scale=8):
-            chat_input = gr.Textbox(show_label=False, placeholder="Type a message to send to Omniparser + X ...", container=False)
+            chat_input = gr.Textbox(show_label=False, placeholder="输入消息发送给Omniparser + X ...", container=False)
         with gr.Column(scale=1, min_width=50):
-            submit_button = gr.Button(value="Send", variant="primary")
+            submit_button = gr.Button(value="发送", variant="primary")
         with gr.Column(scale=1, min_width=50):
-            stop_button = gr.Button(value="Stop", variant="secondary")
+            stop_button = gr.Button(value="停止", variant="secondary")
 
     with gr.Row():
         with gr.Column(scale=2):
-            chatbot = gr.Chatbot(label="Chatbot History", autoscroll=True, height=580)
+            chatbot = gr.Chatbot(label="聊天历史", autoscroll=True, height=580)
         with gr.Column(scale=3):
             iframe = gr.HTML(
                 f'<iframe src="http://{args.windows_host_url}/vnc.html?view_only=1&autoconnect=1&resize=scale" width="100%" height="580" allow="fullscreen"></iframe>',
@@ -458,7 +458,7 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
 
     def update_model(model_selection, state):
         state["model"] = model_selection
-        print(f"Model updated to: {state['model']}")
+        print(f"模型已更新为: {state['model']}")
         
         if model_selection == "claude-3-5-sonnet-20241022":
             provider_choices = [option.value for option in APIProvider if option.value != "openai"]
@@ -476,7 +476,7 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
         default_provider_value = provider_choices[0]
 
         provider_interactive = len(provider_choices) > 1
-        api_key_placeholder = f"{default_provider_value.title()} API Key" if default_provider_value != "ollama" else "不需要API密钥"
+        api_key_placeholder = f"{default_provider_value.title()} API密钥" if default_provider_value != "ollama" else "不需要API密钥"
 
         # Update state
         state["provider"] = default_provider_value
@@ -528,7 +528,7 @@ with gr.Blocks(theme=gr.themes.Default()) as demo:
         state["provider"] = provider_value
         if provider_value != "ollama":
             state["api_key"] = state.get(f"{provider_value}_api_key", "")
-            api_key_placeholder = f"{provider_value.title()} API Key"
+            api_key_placeholder = f"{provider_value.title()} API密钥"
             api_key_interactive = True
         else:
             state["api_key"] = ""  # ollama不需要API密钥

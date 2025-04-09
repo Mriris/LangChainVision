@@ -183,18 +183,33 @@ class VLMOrchestratedAgent:
             self.total_token_usage += token_usage
             self.total_cost += (token_usage * 0.99 / 1000000)
         elif "qwen" in self.model:
-            vlm_response, token_usage = run_oai_interleaved(
-                messages=planner_messages,
-                system=system,
-                model_name=self.model,
-                api_key=self.api_key,
-                max_tokens=min(2048, self.max_tokens),
-                provider_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-                temperature=0,
-            )
-            print(f"qwen token usage: {token_usage}")
-            self.total_token_usage += token_usage
-            self.total_cost += (token_usage * 2.2 / 1000000)  # https://help.aliyun.com/zh/model-studio/getting-started/models?spm=a2c4g.11186623.0.0.74b04823CGnPv7#fe96cfb1a422a
+            try:
+                # 限制最大输入长度，减少输入token数量的方法
+                # 1. 只保留更少的历史图像
+                qwen_only_n_most_recent_images = min(2, self.only_n_most_recent_images if self.only_n_most_recent_images is not None else 2)
+                _maybe_filter_to_n_most_recent_images(planner_messages, qwen_only_n_most_recent_images)
+                print(f"为Qwen模型限制历史图像数量为{qwen_only_n_most_recent_images}")
+                
+                # 2. 使用较小的max_tokens值
+                qwen_max_tokens = min(1024, self.max_tokens)  # 进一步降低max_tokens值
+                
+                vlm_response, token_usage = run_oai_interleaved(
+                    messages=planner_messages,
+                    system=system,
+                    model_name=self.model,
+                    api_key=self.api_key,
+                    max_tokens=qwen_max_tokens,
+                    provider_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    temperature=0,
+                )
+                print(f"qwen token usage: {token_usage}")
+                self.total_token_usage += token_usage
+                self.total_cost += (token_usage * 2.2 / 1000000)  # https://help.aliyun.com/zh/model-studio/getting-started/models?spm=a2c4g.11186623.0.0.74b04823CGnPv7#fe96cfb1a422a
+            except Exception as e:
+                print(f"Error in qwen API call: {e}")
+                # 为确保在API调用失败时程序仍能继续运行，创建一个默认响应
+                vlm_response = f"Error: {e}"
+                token_usage = 0
         else:
             raise ValueError(f"Model {self.model} not supported")
         latency_vlm = time.time() - start
@@ -207,8 +222,30 @@ class VLMOrchestratedAgent:
         if self.print_usage:
             print(f"Total token so far: {self.total_token_usage}. Total cost so far: $USD{self.total_cost:.5f}")
         
-        vlm_response_json = extract_data(vlm_response, "json")
-        vlm_response_json = json.loads(repair_json(vlm_response_json))
+        try:
+            vlm_response_json = extract_data(vlm_response, "json")
+            try:
+                vlm_response_json = json.loads(repair_json(vlm_response_json))
+                
+                # 检查是否为有效的JSON字典
+                if not isinstance(vlm_response_json, dict):
+                    print(f"Warning: 返回的不是有效的JSON对象: {vlm_response_json}")
+                    vlm_response_json = {
+                        "Reasoning": f"LLM返回了无效的响应: {vlm_response}\nNext Action: None",
+                        "Next Action": "None"
+                    }
+            except Exception as e:
+                print(f"Warning: JSON解析错误: {e}, 原始响应: {vlm_response}")
+                vlm_response_json = {
+                    "Reasoning": f"JSON解析错误: {e}\n原始响应: {vlm_response}\nNext Action: None",
+                    "Next Action": "None"
+                }
+        except Exception as e:
+            print(f"Error extracting data: {e}, 原始响应: {vlm_response}")
+            vlm_response_json = {
+                "Reasoning": f"数据提取错误: {e}\n原始响应: {vlm_response}\nNext Action: None",
+                "Next Action": "None"
+            }
 
         img_to_show_base64 = parsed_screen["som_image_base64"]
         if "Box ID" in vlm_response_json:
