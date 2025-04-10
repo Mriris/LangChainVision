@@ -1,41 +1,41 @@
 <!-- BEGIN MICROSOFT SECURITY.MD V0.0.9 BLOCK -->
 
-## Security
+## 安全
 
-Microsoft takes the security of our software products and services seriously, which includes all source code repositories managed through our GitHub organizations, which include [Microsoft](https://github.com/Microsoft), [Azure](https://github.com/Azure), [DotNet](https://github.com/dotnet), [AspNet](https://github.com/aspnet) and [Xamarin](https://github.com/xamarin).
+微软认真对待我们的软件产品和服务的安全问题，这包括通过我们的GitHub组织管理的所有源代码仓库，其中包括[Microsoft](https://github.com/Microsoft)、[Azure](https://github.com/Azure)、[DotNet](https://github.com/dotnet)、[AspNet](https://github.com/aspnet)和[Xamarin](https://github.com/xamarin)。
 
-If you believe you have found a security vulnerability in any Microsoft-owned repository that meets [Microsoft's definition of a security vulnerability](https://aka.ms/security.md/definition), please report it to us as described below.
+如果您认为在任何微软拥有的存储库中发现了符合[微软安全漏洞定义](https://aka.ms/security.md/definition)的安全漏洞，请按照下面的说明向我们报告。
 
-## Reporting Security Issues
+## 报告安全问题
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+**请不要通过公共GitHub问题报告安全漏洞。**
 
-Instead, please report them to the Microsoft Security Response Center (MSRC) at [https://msrc.microsoft.com/create-report](https://aka.ms/security.md/msrc/create-report).
+相反，请将它们报告给微软安全响应中心(MSRC)，网址为[https://msrc.microsoft.com/create-report](https://aka.ms/security.md/msrc/create-report)。
 
-If you prefer to submit without logging in, send email to [secure@microsoft.com](mailto:secure@microsoft.com).  If possible, encrypt your message with our PGP key; please download it from the [Microsoft Security Response Center PGP Key page](https://aka.ms/security.md/msrc/pgp).
+如果您更喜欢在不登录的情况下提交，请发送电子邮件至[secure@microsoft.com](mailto:secure@microsoft.com)。如果可能，请使用我们的PGP密钥加密您的消息；请从[微软安全响应中心PGP密钥页面](https://aka.ms/security.md/msrc/pgp)下载。
 
-You should receive a response within 24 hours. If for some reason you do not, please follow up via email to ensure we received your original message. Additional information can be found at [microsoft.com/msrc](https://www.microsoft.com/msrc). 
+您应该在24小时内收到回复。如果由于某种原因您没有收到回复，请通过电子邮件跟进，确保我们收到了您的原始消息。更多信息可以在[microsoft.com/msrc](https://www.microsoft.com/msrc)找到。
 
-Please include the requested information listed below (as much as you can provide) to help us better understand the nature and scope of the possible issue:
+请包括下面列出的请求信息（尽可能多地提供），以帮助我们更好地理解可能问题的性质和范围：
 
-  * Type of issue (e.g. buffer overflow, SQL injection, cross-site scripting, etc.)
-  * Full paths of source file(s) related to the manifestation of the issue
-  * The location of the affected source code (tag/branch/commit or direct URL)
-  * Any special configuration required to reproduce the issue
-  * Step-by-step instructions to reproduce the issue
-  * Proof-of-concept or exploit code (if possible)
-  * Impact of the issue, including how an attacker might exploit the issue
+  * 问题类型（例如缓冲区溢出、SQL注入、跨站点脚本等）
+  * 与问题表现相关的源文件的完整路径
+  * 受影响源代码的位置（标签/分支/提交或直接URL）
+  * 重现问题所需的任何特殊配置
+  * 重现问题的逐步说明
+  * 概念验证或漏洞利用代码（如果可能）
+  * 问题的影响，包括攻击者如何利用该问题
 
-This information will help us triage your report more quickly.
+这些信息将帮助我们更快地分类您的报告。
 
-If you are reporting for a bug bounty, more complete reports can contribute to a higher bounty award. Please visit our [Microsoft Bug Bounty Program](https://aka.ms/security.md/msrc/bounty) page for more details about our active programs.
+如果您是为了漏洞赏金而报告，更完整的报告可以贡献更高的赏金奖励。请访问我们的[微软漏洞赏金计划](https://aka.ms/security.md/msrc/bounty)页面，了解有关我们活跃计划的更多详情。
 
-## Preferred Languages
+## 首选语言
 
-We prefer all communications to be in English.
+我们更喜欢所有沟通都使用英语。
 
-## Policy
+## 政策
 
-Microsoft follows the principle of [Coordinated Vulnerability Disclosure](https://aka.ms/security.md/cvd).
+微软遵循[协调漏洞披露](https://aka.ms/security.md/cvd)的原则。
 
 <!-- END MICROSOFT SECURITY.MD BLOCK -->

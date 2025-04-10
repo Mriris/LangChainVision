@@ -1,1 +1,1 @@
-Add your Win11E setup.iso to this folder
+将您的 Win11E custom.iso 添加到此文件夹
